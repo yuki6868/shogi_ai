@@ -1,11 +1,26 @@
+# backend/main.py
+
+from __future__ import annotations
+
+import random
+from typing import Any
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Any
+
+from ai.board import ShogiBoard
+
+
+class AiMoveRequest(BaseModel):
+    board: list[list[dict[str, Any] | None]]
+    playerHand: dict[str, int] = {}
+    enemyHand: dict[str, int] = {}
+    turn: str = "enemy"
+
 
 app = FastAPI()
 
-# HTMLからアクセスできるようにする
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -14,27 +29,41 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-class GameState(BaseModel):
-    board: list[list[Any]]
-    playerHand: list[str]
-    enemyHand: list[str]
-    turn: str
-
 
 @app.get("/")
-def root():
-    return {"message": "Shogi AI Backend Running"}
+def health_check():
+    return {"status": "ok"}
+
+
+@app.post("/api/legal-moves")
+def legal_moves(req: AiMoveRequest):
+    shogi = ShogiBoard.from_html_state(req.model_dump())
+    moves = shogi.generate_legal_moves(req.turn)
+
+    return {
+        "ok": True,
+        "turn": req.turn,
+        "count": len(moves),
+        "moves": [m.to_dict() for m in moves],
+    }
 
 
 @app.post("/api/ai-move")
-def ai_move(game_state: GameState):
+def ai_move(req: AiMoveRequest):
+    shogi = ShogiBoard.from_html_state(req.model_dump())
+    moves = shogi.generate_legal_moves(req.turn)
 
-    print("盤面を受信しました")
-    print(game_state.turn)
+    if not moves:
+        return {
+            "ok": False,
+            "reason": "合法手がありません",
+            "move": None,
+        }
 
-    # 今はダミー応答
+    selected = random.choice(moves)
+
     return {
-        "status": "ok",
-        "message": "Python側で盤面を受信しました",
-        "next_action": "ここにAIの指し手を返す"
+        "ok": True,
+        "move": selected.to_dict(),
+        "legalMoveCount": len(moves),
     }
