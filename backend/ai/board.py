@@ -15,6 +15,24 @@ PROMOTE_MAP = {
 
 UNPROMOTE_MAP = {v: k for k, v in PROMOTE_MAP.items()}
 
+PIECE_MAP = {
+    "歩": "P",
+    "香": "L",
+    "桂": "N",
+    "銀": "S",
+    "金": "G",
+    "角": "B",
+    "飛": "R",
+    "王": "K",
+
+    "と": "+P",
+    "成香": "+L",
+    "成桂": "+N",
+    "成銀": "+S",
+    "馬": "+B",
+    "龍": "+R",
+}
+
 
 @dataclass
 class Move:
@@ -43,8 +61,25 @@ class ShogiBoard:
 
     @classmethod
     def from_html_state(cls, data: dict[str, Any]) -> "ShogiBoard":
+        converted_board = []
+
+        for row in data["board"]:
+            new_row = []
+
+            for cell in row:
+                if cell is None:
+                    new_row.append(None)
+                    continue
+
+                new_row.append({
+                    "type": PIECE_MAP.get(cell["type"], cell["type"]),
+                    "owner": cell["owner"],
+                })
+
+            converted_board.append(new_row)
+
         return cls(
-            board=data["board"],
+            board=converted_board,
             turn=data.get("turn", "enemy"),
         )
 

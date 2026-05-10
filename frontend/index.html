@@ -381,6 +381,110 @@
           return false;
       }
     }
+    
+    async function requestAiMove() {
+      const payload = {
+        board: board,
+        playerHand: playerHand,
+        enemyHand: enemyHand,
+        turn: turn
+      };
+
+      console.log("AIへ送信:", payload);
+
+      const res = await fetch("http://127.0.0.1:8000/api/ai-move", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error("AI APIエラー:", res.status, errorText);
+        alert(`AI APIエラー: ${res.status}\n${errorText}`);
+        return;
+      }
+
+      const data = await res.json();
+
+      if (!data.ok || !data.move) {
+        console.log("AIの合法手なし", data);
+        alert("AIの合法手がありません");
+        return;
+      }
+
+      applyAiMove(data.move);
+    }
+
+    function applyAiMove(move) {
+      const toRow = move.to.row;
+      const toCol = move.to.col;
+
+      // 駒打ち
+      if (move.drop) {
+        board[toRow][toCol] = {
+          type: move.piece,
+          owner: turn
+        };
+
+        if (turn === "player") {
+          playerHand[move.piece]--;
+          if (playerHand[move.piece] <= 0) delete playerHand[move.piece];
+        } else {
+          enemyHand[move.piece]--;
+          if (enemyHand[move.piece] <= 0) delete enemyHand[move.piece];
+        }
+      }
+
+      // 通常移動
+      else {
+        const fromRow = move.from.row;
+        const fromCol = move.from.col;
+
+        const movingPiece = board[fromRow][fromCol];
+        const capturedPiece = board[toRow][toCol];
+
+        // 取った駒を持ち駒に追加
+        if (capturedPiece) {
+          const capturedType = unpromotePiece(capturedPiece.type);
+
+          if (turn === "player") {
+            playerHand[capturedType] = (playerHand[capturedType] || 0) + 1;
+          } else {
+            enemyHand[capturedType] = (enemyHand[capturedType] || 0) + 1;
+          }
+        }
+
+        let newType = movingPiece.type;
+
+        if (move.promote) {
+          newType = promotePiece(newType);
+        }
+
+        board[fromRow][fromCol] = null;
+        board[toRow][toCol] = {
+          type: newType,
+          owner: movingPiece.owner
+        };
+      }
+
+      // ターン交代
+
+      selectedSquare = null;
+      selectedHandPiece = null;
+
+      turn = turn === "player" ? "enemy" : "player";
+      renderBoard();
+      renderHands();
+
+      if (turn === "enemy") {
+        setTimeout(() => {
+          requestAiMove();
+        }, 500);
+      }
+    }
 
     function isPathClear(fromRow, fromCol, toRow, toCol) {
       const rowStep = Math.sign(toRow - fromRow);

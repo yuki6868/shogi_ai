@@ -13,9 +13,9 @@ from ai.board import ShogiBoard
 
 
 class AiMoveRequest(BaseModel):
-    board: list[list[dict[str, Any] | None]]
-    playerHand: dict[str, int] = {}
-    enemyHand: dict[str, int] = {}
+    board: list
+    playerHand: list | dict = []
+    enemyHand: list | dict = []
     turn: str = "enemy"
 
 
