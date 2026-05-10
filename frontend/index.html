@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>将棋AI - 盤面UI</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f3efe5;
+      color: #2f261d;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 24px;
+    }
+
+    .app {
+      width: min(1100px, 100%);
+      display: grid;
+      grid-template-columns: 1fr 300px;
+      gap: 24px;
+      align-items: start;
+    }
+
+    .game-area,
+    .side-panel {
+      background: #fffaf0;
+      border: 1px solid rgba(80, 55, 30, 0.18);
+      border-radius: 24px;
+      padding: 24px;
+      box-shadow: 0 18px 45px rgba(80, 55, 30, 0.14);
+    }
+
+    .title {
+      margin: 0 0 8px;
+      font-size: 28px;
+      letter-spacing: 0.04em;
+    }
+
+    .lead {
+      margin: 0 0 20px;
+      color: #756556;
+      line-height: 1.7;
+    }
+
+    .hands {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      margin: 12px 0;
+    }
+
+    .hand-box {
+      flex: 1;
+      min-height: 58px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      background: #efe2c9;
+      border: 1px solid rgba(80, 55, 30, 0.16);
+      font-size: 14px;
+      color: #5c4b3b;
+    }
+
+    .hand-title {
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .hand-piece-button {
+      margin-right: 6px;
+      margin-bottom: 6px;
+      padding: 7px 10px;
+      border: none;
+      border-radius: 10px;
+      background: #4b3521;
+      color: white;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .hand-piece-button.selected {
+      background: #9c6428;
+    }
+
+    .board-wrap {
+      display: flex;
+      justify-content: center;
+      margin: 16px 0;
+    }
+
+    .board {
+      width: min(720px, 100%);
+      aspect-ratio: 1 / 1;
+      display: grid;
+      grid-template-columns: repeat(9, 1fr);
+      grid-template-rows: repeat(9, 1fr);
+      background: #d6a85f;
+      border: 4px solid #4b3521;
+      box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.25);
+    }
+
+    .cell {
+      position: relative;
+      border-right: 1px solid rgba(60, 38, 18, 0.75);
+      border-bottom: 1px solid rgba(60, 38, 18, 0.75);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.12s ease;
+    }
+
+    .cell:nth-child(9n) {
+      border-right: none;
+    }
+
+    .cell:nth-last-child(-n + 9) {
+      border-bottom: none;
+    }
+
+    .cell.selected {
+      background: rgba(255, 255, 255, 0.35);
+      outline: 3px solid rgba(120, 60, 20, 0.65);
+      outline-offset: -3px;
+    }
+
+    .cell.can-move {
+      background: rgba(255, 255, 255, 0.18);
+    }
+
+    .piece {
+      width: 72%;
+      height: 82%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-weight: 800;
+      font-size: clamp(18px, 4vw, 34px);
+      color: #27180c;
+      background: linear-gradient(180deg, #f8df9b 0%, #e7bd63 100%);
+      clip-path: polygon(50% 0%, 88% 22%, 82% 100%, 18% 100%, 12% 22%);
+      border: 1px solid rgba(60, 38, 18, 0.5);
+      text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
+      box-shadow: 0 3px 5px rgba(60, 38, 18, 0.25);
+    }
+
+    .piece.enemy {
+      transform: rotate(180deg);
+    }
+
+    .piece.promoted {
+      color: #9f2a15;
+    }
+
+    .status-title {
+      margin: 0 0 12px;
+      font-size: 20px;
+    }
+
+    .status-box {
+      padding: 14px;
+      border-radius: 16px;
+      background: #f3ead7;
+      line-height: 1.7;
+      color: #5c4b3b;
+      min-height: 120px;
+      white-space: pre-wrap;
+    }
+
+    .buttons {
+      display: grid;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    button.main-button {
+      border: none;
+      border-radius: 14px;
+      padding: 12px 14px;
+      font-weight: 700;
+      cursor: pointer;
+      background: #4b3521;
+      color: white;
+    }
+
+    .note {
+      margin-top: 18px;
+      color: #8a7a68;
+      font-size: 13px;
+      line-height: 1.7;
+    }
+
+    @media (max-width: 900px) {
+      body {
+        align-items: start;
+        padding: 14px;
+      }
+
+      .app {
+        grid-template-columns: 1fr;
+      }
+
+      .game-area,
+      .side-panel {
+        padding: 16px;
+        border-radius: 18px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <section class="game-area">
+      <h1 class="title">将棋AI 盤面UI</h1>
+      <p class="lead">このHTMLは、盤面表示・駒の移動・持ち駒・成り・最低限の反則チェックだけを担当します。</p>
+
+      <div class="hands">
+        <div class="hand-box">
+          <div class="hand-title">後手の持ち駒</div>
+          <div id="enemyHand"></div>
+        </div>
+      </div>
+
+      <div class="board-wrap">
+        <div id="board" class="board"></div>
+      </div>
+
+      <div class="hands">
+        <div class="hand-box">
+          <div class="hand-title">先手の持ち駒</div>
+          <div id="playerHand"></div>
+        </div>
+      </div>
+    </section>
+
+    <aside class="side-panel">
+      <h2 class="status-title">状況</h2>
+      <div id="status" class="status-box">駒をクリックして選択してください。</div>
+
+      <div class="buttons">
+        <button class="main-button" type="button" onclick="resetGame()">初期配置に戻す</button>
+        <button class="main-button" type="button" onclick="clearSelection()">選択を解除</button>
+        <button class="main-button" type="button" onclick="sendBoardToPython()">Pythonへ盤面送信</button>
+      </div>
+
+      <p class="note">
+        せめぎ合い評価・棋力推定・AIの指し手選択はPython側で管理します。HTMLは入力画面として使います。
+      </p>
+    </aside>
+  </main>
+
+  <script>
+    const boardElement = document.getElementById("board");
+    const statusElement = document.getElementById("status");
+
+    const PIECES = {
+      KING_PLAYER: "玉",
+      KING_ENEMY: "王",
+      ROOK: "飛",
+      BISHOP: "角",
+      GOLD: "金",
+      SILVER: "銀",
+      KNIGHT: "桂",
+      LANCE: "香",
+      PAWN: "歩"
+    };
+
+    let board = [];
+    let turn = "player";
+    let selected = null;
+    let selectedHandPiece = null;
+    let playerHand = [];
+    let enemyHand = [];
+
+    function player(type) {
+      return { type, owner: "player", promoted: false };
+    }
+
+    function enemy(type) {
+      return { type, owner: "enemy", promoted: false };
+    }
+
+    function createInitialBoard() {
+      const empty = Array.from({ length: 9 }, () => Array(9).fill(null));
+
+      empty[0] = [
+        enemy(PIECES.LANCE), enemy(PIECES.KNIGHT), enemy(PIECES.SILVER), enemy(PIECES.GOLD), enemy(PIECES.KING_ENEMY),
+        enemy(PIECES.GOLD), enemy(PIECES.SILVER), enemy(PIECES.KNIGHT), enemy(PIECES.LANCE)
+      ];
+      empty[1][1] = enemy(PIECES.ROOK);
+      empty[1][7] = enemy(PIECES.BISHOP);
+      empty[2] = Array.from({ length: 9 }, () => enemy(PIECES.PAWN));
+
+      empty[6] = Array.from({ length: 9 }, () => player(PIECES.PAWN));
+      empty[7][1] = player(PIECES.BISHOP);
+      empty[7][7] = player(PIECES.ROOK);
+      empty[8] = [
+        player(PIECES.LANCE), player(PIECES.KNIGHT), player(PIECES.SILVER), player(PIECES.GOLD), player(PIECES.KING_PLAYER),
+        player(PIECES.GOLD), player(PIECES.SILVER), player(PIECES.KNIGHT), player(PIECES.LANCE)
+      ];
+
+      return empty;
+    }
+
+    function getForward(owner) {
+      return owner === "player" ? -1 : 1;
+    }
+
+    function isInsideBoard(row, col) {
+      return row >= 0 && row < 9 && col >= 0 && col < 9;
+    }
+
+    function isLegalMove(piece, fromRow, fromCol, toRow, toCol) {
+      if (!piece) return false;
+      if (!isInsideBoard(toRow, toCol)) return false;
+
+      const targetPiece = board[toRow][toCol];
+      if (targetPiece && targetPiece.owner === piece.owner) return false;
+
+      const dr = toRow - fromRow;
+      const dc = toCol - fromCol;
+      const forward = getForward(piece.owner);
+      const absDr = Math.abs(dr);
+      const absDc = Math.abs(dc);
+
+      switch (piece.type) {
+        case PIECES.PAWN:
+          return dr === forward && dc === 0;
+
+        case PIECES.LANCE:
+          return dc === 0 && dr * forward > 0 && isPathClear(fromRow, fromCol, toRow, toCol);
+
+        case PIECES.KNIGHT:
+          return dr === forward * 2 && absDc === 1;
+
+        case PIECES.SILVER:
+          return (dr === forward && absDc <= 1) || (dr === -forward && absDc === 1);
+
+        case PIECES.GOLD:
+        case "と":
+        case "成香":
+        case "成桂":
+        case "成銀":
+          return (
+            (dr === forward && absDc <= 1) ||
+            (dr === 0 && absDc === 1) ||
+            (dr === -forward && dc === 0)
+          );
+
+        case PIECES.KING_PLAYER:
+        case PIECES.KING_ENEMY:
+          return absDr <= 1 && absDc <= 1 && !(dr === 0 && dc === 0);
+
+        case PIECES.ROOK:
+          return (dr === 0 || dc === 0) && isPathClear(fromRow, fromCol, toRow, toCol);
+
+        case PIECES.BISHOP:
+          return absDr === absDc && isPathClear(fromRow, fromCol, toRow, toCol);
+
+        case "龍":
+          return (
+            ((dr === 0 || dc === 0) && isPathClear(fromRow, fromCol, toRow, toCol)) ||
+            (absDr === 1 && absDc === 1)
+          );
+
+        case "馬":
+          return (
+            (absDr === absDc && isPathClear(fromRow, fromCol, toRow, toCol)) ||
+            ((absDr === 1 && dc === 0) || (dr === 0 && absDc === 1))
+          );
+
+        default:
+          return false;
+      }
+    }
+
+    function isPathClear(fromRow, fromCol, toRow, toCol) {
+      const rowStep = Math.sign(toRow - fromRow);
+      const colStep = Math.sign(toCol - fromCol);
+      let row = fromRow + rowStep;
+      let col = fromCol + colStep;
+
+      while (row !== toRow || col !== toCol) {
+        if (board[row][col]) return false;
+        row += rowStep;
+        col += colStep;
+      }
+
+      return true;
+    }
+
+    function getLegalMoves(row, col) {
+      const piece = board[row][col];
+      if (!piece) return [];
+
+      const moves = [];
+      for (let toRow = 0; toRow < 9; toRow++) {
+        for (let toCol = 0; toCol < 9; toCol++) {
+          if (isLegalMove(piece, row, col, toRow, toCol)) {
+            moves.push({ row: toRow, col: toCol });
+          }
+        }
+      }
+      return moves;
+    }
+
+    function isSelectedLegalMove(row, col) {
+      if (!selected) return false;
+      const piece = board[selected.row][selected.col];
+      return isLegalMove(piece, selected.row, selected.col, row, col);
+    }
+
+    function renderHands() {
+      renderHand("player", playerHand, document.getElementById("playerHand"));
+      renderHand("enemy", enemyHand, document.getElementById("enemyHand"));
+    }
+
+    function renderHand(owner, hand, element) {
+      element.innerHTML = "";
+
+      if (hand.length === 0) {
+        element.textContent = "なし";
+        return;
+      }
+
+      hand.forEach((pieceType, index) => {
+        const button = document.createElement("button");
+        button.className = "hand-piece-button";
+        button.textContent = pieceType;
+
+        if (
+          selectedHandPiece &&
+          selectedHandPiece.owner === owner &&
+          selectedHandPiece.index === index
+        ) {
+          button.classList.add("selected");
+        }
+
+        button.onclick = () => {
+          if (owner !== turn) {
+            setStatus(`今は${turn === "player" ? "先手" : "後手"}の番です。`);
+            return;
+          }
+
+          selected = null;
+          selectedHandPiece = { owner, index, type: pieceType };
+          setStatus(`${pieceType}を打つ場所を選んでください。`);
+          renderBoard();
+        };
+
+        element.appendChild(button);
+      });
+    }
+
+    function renderBoard() {
+      renderHands();
+      boardElement.innerHTML = "";
+
+      for (let row = 0; row < 9; row++) {
+        for (let col = 0; col < 9; col++) {
+          const cell = document.createElement("div");
+          cell.className = "cell";
+
+          if (selected && selected.row === row && selected.col === col) {
+            cell.classList.add("selected");
+          }
+
+          if (selected && isSelectedLegalMove(row, col)) {
+            cell.classList.add("can-move");
+          }
+
+          const piece = board[row][col];
+          if (piece) {
+            const pieceElement = document.createElement("div");
+            pieceElement.className = `piece ${piece.owner}`;
+            if (piece.promoted) pieceElement.classList.add("promoted");
+            pieceElement.textContent = piece.type;
+            cell.appendChild(pieceElement);
+          }
+
+          cell.addEventListener("click", () => handleCellClick(row, col));
+          boardElement.appendChild(cell);
+        }
+      }
+    }
+
+    function handleCellClick(row, col) {
+      if (selectedHandPiece) {
+        handleDropPiece(row, col);
+        return;
+      }
+
+      const clickedPiece = board[row][col];
+
+      if (!selected) {
+        if (!clickedPiece) {
+          setStatus("そこには駒がありません。動かしたい駒をクリックしてください。");
+          return;
+        }
+
+        if (clickedPiece.owner !== turn) {
+          setStatus(`今は${turn === "player" ? "先手" : "後手"}の番です。`);
+          return;
+        }
+
+        selected = { row, col };
+        setStatus(`${clickedPiece.type}を選択しました。移動先をクリックしてください。`);
+        renderBoard();
+        return;
+      }
+
+      if (selected.row === row && selected.col === col) {
+        clearSelection();
+        return;
+      }
+
+      const movingPiece = board[selected.row][selected.col];
+      if (!isLegalMove(movingPiece, selected.row, selected.col, row, col)) {
+        setStatus("その場所には動けません。光っている場所を選んでください。");
+        renderBoard();
+        return;
+      }
+
+      movePiece(selected.row, selected.col, row, col);
+      selected = null;
+      switchTurn();
+      renderBoard();
+    }
+
+    function movePiece(fromRow, fromCol, toRow, toCol) {
+      const movingPiece = board[fromRow][fromCol];
+      const targetPiece = board[toRow][toCol];
+
+      if (!movingPiece) return;
+
+      board[toRow][toCol] = movingPiece;
+      board[fromRow][fromCol] = null;
+
+      if (canPromote(movingPiece, fromRow, toRow)) {
+        const shouldPromote = confirm(`${movingPiece.type}を成りますか？`);
+        if (shouldPromote) {
+          promotePiece(movingPiece);
+        }
+      }
+
+      if (targetPiece) {
+        const capturedType = demotePiece(targetPiece.type);
+        if (movingPiece.owner === "player") {
+          playerHand.push(capturedType);
+        } else {
+          enemyHand.push(capturedType);
+        }
+        setStatus(`${movingPiece.type}で${targetPiece.type}を取りました。`);
+      } else {
+        setStatus(`${movingPiece.type}を動かしました。`);
+      }
+    }
+
+    function handleDropPiece(row, col) {
+      if (board[row][col]) {
+        setStatus("駒がある場所には打てません。");
+        return;
+      }
+
+      if (selectedHandPiece.type === PIECES.PAWN && hasPawnInColumn(col, selectedHandPiece.owner)) {
+        setStatus("二歩です。同じ列に歩があります。");
+        return;
+      }
+
+      if (!canDropPiece(selectedHandPiece.type, row, selectedHandPiece.owner)) {
+        setStatus("その場所には打てません。行き所のない駒になります。");
+        return;
+      }
+
+      const droppedPiece = {
+        type: selectedHandPiece.type,
+        owner: selectedHandPiece.owner,
+        promoted: false
+      };
+
+      board[row][col] = droppedPiece;
+
+      if (selectedHandPiece.owner === "player") {
+        playerHand.splice(selectedHandPiece.index, 1);
+      } else {
+        enemyHand.splice(selectedHandPiece.index, 1);
+      }
+
+      selectedHandPiece = null;
+      setStatus(`${droppedPiece.type}を打ちました。`);
+      switchTurn();
+      renderBoard();
+    }
+
+    function hasPawnInColumn(col, owner) {
+      for (let row = 0; row < 9; row++) {
+        const piece = board[row][col];
+        if (piece && piece.owner === owner && piece.type === PIECES.PAWN) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function canDropPiece(type, row, owner) {
+      if (owner === "player") {
+        if (type === PIECES.PAWN || type === PIECES.LANCE) return row !== 0;
+        if (type === PIECES.KNIGHT) return row > 1;
+      }
+
+      if (owner === "enemy") {
+        if (type === PIECES.PAWN || type === PIECES.LANCE) return row !== 8;
+        if (type === PIECES.KNIGHT) return row < 7;
+      }
+
+      return true;
+    }
+
+    function canPromote(piece, fromRow, toRow) {
+      if (!piece || piece.promoted) return false;
+
+      const promotable = [
+        PIECES.PAWN,
+        PIECES.LANCE,
+        PIECES.KNIGHT,
+        PIECES.SILVER,
+        PIECES.ROOK,
+        PIECES.BISHOP
+      ];
+
+      if (!promotable.includes(piece.type)) return false;
+
+      const promotionZone = piece.owner === "player" ? [0, 1, 2] : [6, 7, 8];
+      return promotionZone.includes(fromRow) || promotionZone.includes(toRow);
+    }
+
+    function promotePiece(piece) {
+      piece.promoted = true;
+
+      switch (piece.type) {
+        case PIECES.PAWN:
+          piece.type = "と";
+          break;
+        case PIECES.LANCE:
+          piece.type = "成香";
+          break;
+        case PIECES.KNIGHT:
+          piece.type = "成桂";
+          break;
+        case PIECES.SILVER:
+          piece.type = "成銀";
+          break;
+        case PIECES.ROOK:
+          piece.type = "龍";
+          break;
+        case PIECES.BISHOP:
+          piece.type = "馬";
+          break;
+      }
+    }
+
+    function demotePiece(type) {
+      switch (type) {
+        case "と": return PIECES.PAWN;
+        case "成香": return PIECES.LANCE;
+        case "成桂": return PIECES.KNIGHT;
+        case "成銀": return PIECES.SILVER;
+        case "龍": return PIECES.ROOK;
+        case "馬": return PIECES.BISHOP;
+        default: return type;
+      }
+    }
+
+    function switchTurn() {
+      turn = turn === "player" ? "enemy" : "player";
+      setStatus(`${turn === "player" ? "先手" : "後手"}の番です。`);
+    }
+
+    function clearSelection() {
+      selected = null;
+      selectedHandPiece = null;
+      setStatus("選択を解除しました。駒をクリックしてください。");
+      renderBoard();
+    }
+
+    function resetGame() {
+      board = createInitialBoard();
+      turn = "player";
+      selected = null;
+      selectedHandPiece = null;
+      playerHand = [];
+      enemyHand = [];
+      setStatus("初期配置に戻しました。先手の番です。");
+      renderBoard();
+    }
+
+    function getGameState() {
+      return {
+        board,
+        playerHand,
+        enemyHand,
+        turn
+      };
+    }
+
+    async function sendBoardToPython() {
+      const gameState = getGameState();
+
+      try {
+        const response = await fetch("http://127.0.0.1:8000/api/ai-move", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(gameState)
+        });
+
+        if (!response.ok) {
+          throw new Error("Python APIから正常な返答がありませんでした。");
+        }
+
+        const data = await response.json();
+        setStatus(`Pythonから返答がありました。
+${JSON.stringify(data, null, 2)}`);
+      } catch (error) {
+        setStatus(`Python APIへ接続できませんでした。
+${error.message}`);
+      }
+    }
+
+    function setStatus(message) {
+      statusElement.textContent = message;
+    }
+
+    resetGame();
+  </script>
+</body>
+</html>
