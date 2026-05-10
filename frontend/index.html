@@ -279,6 +279,7 @@
     let selectedHandPiece = null;
     let playerHand = [];
     let enemyHand = [];
+    let legalMovesCache = [];
 
     function player(type) {
       return { type, owner: "player", promoted: false };
@@ -415,6 +416,81 @@
           return false;
       }
     }
+
+    async function fetchLegalMovesFromPython() {
+      const payload = {
+        board: board,
+        playerHand: playerHand,
+        enemyHand: enemyHand,
+        turn: turn
+      };
+
+      const res = await fetch("http://127.0.0.1:8000/api/legal-moves", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error("合法手APIエラー:", res.status, errorText);
+        setStatus(`合法手APIエラー: ${res.status}`);
+        return [];
+      }
+
+      const data = await res.json();
+      legalMovesCache = data.moves || [];
+      return legalMovesCache;
+    }
+
+    function clearLegalMovesCache() {
+      legalMovesCache = [];
+    }
+
+    function findLegalMoveForSelected(row, col) {
+      if (selected) {
+        return legalMovesCache.find((move) => {
+          return (
+            !move.drop &&
+            move.from &&
+            move.from.row === selected.row &&
+            move.from.col === selected.col &&
+            move.to.row === row &&
+            move.to.col === col
+          );
+        });
+      }
+
+      if (selectedHandPiece) {
+        return legalMovesCache.find((move) => {
+          return (
+            move.drop &&
+            aiPieceToJapanese(move.piece) === selectedHandPiece.type &&
+            move.to.row === row &&
+            move.to.col === col
+          );
+        });
+      }
+
+      return null;
+    }
+
+    function isSelectedLegalMove(row, col) {
+      return Boolean(findLegalMoveForSelected(row, col));
+    }
+
+    function hasAnyLegalMoveFromSquare(row, col) {
+      return legalMovesCache.some((move) => {
+        return (
+          !move.drop &&
+          move.from &&
+          move.from.row === row &&
+          move.from.col === col
+        );
+      });
+    }
     
     async function requestAiMove() {
       const payload = {
@@ -452,6 +528,63 @@
       applyAiMove(data.move);
     }
 
+    function aiPieceToJapanese(type) {
+      const map = {
+        "P": "歩",
+        "L": "香",
+        "N": "桂",
+        "S": "銀",
+        "G": "金",
+        "B": "角",
+        "R": "飛",
+        "K": "王",
+        "+P": "と",
+        "+L": "成香",
+        "+N": "成桂",
+        "+S": "成銀",
+        "+B": "馬",
+        "+R": "龍"
+      };
+
+      return map[type] || type;
+    }
+
+    function promotePieceType(type) {
+      const map = {
+        "歩": "と",
+        "香": "成香",
+        "桂": "成桂",
+        "銀": "成銀",
+        "飛": "龍",
+        "角": "馬"
+      };
+
+      return map[type] || type;
+    }
+
+    function demotePiece(type) {
+      const map = {
+        "と": "歩",
+        "成香": "香",
+        "成桂": "桂",
+        "成銀": "銀",
+        "馬": "角",
+        "龍": "飛"
+      };
+
+      return map[type] || type;
+    }
+
+    function removeOnePieceFromHand(hand, pieceType) {
+      const index = hand.indexOf(pieceType);
+
+      if (index >= 0) {
+        hand.splice(index, 1);
+      } else {
+        console.warn("持ち駒から削除できませんでした", pieceType, hand);
+      }
+    }
+
     function applyAiMove(move) {
       console.log("AIの手:", move);
 
@@ -459,11 +592,21 @@
       const toCol = move.to.col;
 
       if (move.drop) {
+        const droppedType = aiPieceToJapanese(move.piece);
+
         board[toRow][toCol] = {
-          type: aiPieceToJapanese(move.piece),
+          type: droppedType,
           owner: turn,
           promoted: false
         };
+
+        if (turn === "player") {
+          removeOnePieceFromHand(playerHand, droppedType);
+        } else {
+          removeOnePieceFromHand(enemyHand, droppedType);
+        }
+
+        setStatus(`AIが${droppedType}を打ちました。`);
       } else {
         const fromRow = move.from.row;
         const fromCol = move.from.col;
@@ -498,6 +641,8 @@
           owner: movingPiece.owner,
           promoted: move.promote || movingPiece.promoted || false
         };
+
+        setStatus(`AIが${newType}を動かしました。`);
       }
 
       selected = null;
@@ -569,7 +714,7 @@
           button.classList.add("selected");
         }
 
-        button.onclick = () => {
+        button.onclick = async () => {
           if (owner !== turn) {
             setStatus(`今は${turn === "player" ? "先手" : "後手"}の番です。`);
             return;
@@ -577,6 +722,9 @@
 
           selected = null;
           selectedHandPiece = { owner, index, type: pieceType };
+
+          await fetchLegalMovesFromPython();
+
           setStatus(`${pieceType}を打つ場所を選んでください。`);
           renderBoard();
         };
@@ -598,7 +746,7 @@
             cell.classList.add("selected");
           }
 
-          if (selected && isSelectedLegalMove(row, col)) {
+          if ((selected || selectedHandPiece) && isSelectedLegalMove(row, col)) {
             cell.classList.add("can-move");
           }
 
@@ -617,7 +765,7 @@
       }
     }
 
-    function handleCellClick(row, col) {
+    async function handleCellClick(row, col) {
       if (selectedHandPiece) {
         handleDropPiece(row, col);
         return;
@@ -637,6 +785,16 @@
         }
 
         selected = { row, col };
+        await fetchLegalMovesFromPython();
+
+        if (!hasAnyLegalMoveFromSquare(row, col)) {
+          selected = null;
+          clearLegalMovesCache();
+          setStatus(`${clickedPiece.type}には合法手がありません。`);
+          renderBoard();
+          return;
+        }
+
         setStatus(`${clickedPiece.type}を選択しました。移動先をクリックしてください。`);
         renderBoard();
         return;
@@ -647,15 +805,19 @@
         return;
       }
 
-      const movingPiece = board[selected.row][selected.col];
-      if (!isLegalMove(movingPiece, selected.row, selected.col, row, col)) {
-        setStatus("その場所には動けません。光っている場所を選んでください。");
+      const legalMove = findLegalMoveForSelected(row, col);
+
+      if (!legalMove) {
+        setStatus("その場所には動けません。Python判定で合法手ではありません。");
         renderBoard();
         return;
       }
 
-      movePiece(selected.row, selected.col, row, col);
+      movePiece(selected.row, selected.col, row, col, legalMove.promote);
+
       selected = null;
+      clearLegalMovesCache();
+
       switchTurn();
       renderBoard();
 
@@ -664,7 +826,7 @@
       }
     }
 
-    function movePiece(fromRow, fromCol, toRow, toCol) {
+    function movePiece(fromRow, fromCol, toRow, toCol, forcePromote = false) {
       const movingPiece = board[fromRow][fromCol];
       const targetPiece = board[toRow][toCol];
 
@@ -673,7 +835,9 @@
       board[toRow][toCol] = movingPiece;
       board[fromRow][fromCol] = null;
 
-      if (canPromote(movingPiece, fromRow, toRow)) {
+      if (forcePromote) {
+        promotePiece(movingPiece);
+      } else if (canPromote(movingPiece, fromRow, toRow)) {
         const shouldPromote = confirm(`${movingPiece.type}を成りますか？`);
         if (shouldPromote) {
           promotePiece(movingPiece);
@@ -694,18 +858,10 @@
     }
 
     function handleDropPiece(row, col) {
-      if (board[row][col]) {
-        setStatus("駒がある場所には打てません。");
-        return;
-      }
+      const legalMove = findLegalMoveForSelected(row, col);
 
-      if (selectedHandPiece.type === PIECES.PAWN && hasPawnInColumn(col, selectedHandPiece.owner)) {
-        setStatus("二歩です。同じ列に歩があります。");
-        return;
-      }
-
-      if (!canDropPiece(selectedHandPiece.type, row, selectedHandPiece.owner)) {
-        setStatus("その場所には打てません。行き所のない駒になります。");
+      if (!legalMove) {
+        setStatus("その場所には打てません。Python判定で合法手ではありません。");
         return;
       }
 
@@ -724,6 +880,8 @@
       }
 
       selectedHandPiece = null;
+      clearLegalMovesCache();
+
       setStatus(`${droppedPiece.type}を打ちました。`);
       switchTurn();
       renderBoard();
@@ -820,6 +978,7 @@
     function clearSelection() {
       selected = null;
       selectedHandPiece = null;
+      clearLegalMovesCache();
       setStatus("選択を解除しました。駒をクリックしてください。");
       renderBoard();
     }

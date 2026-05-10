@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import random
-from typing import Any
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
