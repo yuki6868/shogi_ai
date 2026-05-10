@@ -298,6 +298,27 @@
       const absDc = Math.abs(dc);
 
       switch (piece.type) {
+        case "と":
+        case "成香":
+        case "成桂":
+        case "成銀":
+          return (
+            (dr === forward && absDc <= 1) ||
+            (dr === 0 && absDc === 1) ||
+            (dr === -forward && dc === 0)
+          );
+
+        case "龍":
+          return (
+            ((dr === 0 || dc === 0) && isPathClear(fromRow, fromCol, toRow, toCol)) ||
+            (absDr === 1 && absDc === 1)
+          );
+
+        case "馬":
+          return (
+            (absDr === absDc && isPathClear(fromRow, fromCol, toRow, toCol)) ||
+            ((absDr === 1 && dc === 0) || (dr === 0 && absDc === 1))
+          );
         case PIECES.PAWN:
           return dr === forward && dc === 0;
 
@@ -502,10 +523,69 @@
       board[toRow][toCol] = movingPiece;
       board[fromRow][fromCol] = null;
 
+      if (canPromote(movingPiece, fromRow, toRow)) {
+        const shouldPromote = confirm(`${movingPiece.type}を成りますか？`);
+        if (shouldPromote) {
+          promotePiece(movingPiece);
+        }
+      }
+
       if (targetPiece) {
         setStatus(`${movingPiece.type}で${targetPiece.type}を取りました。`);
       } else {
         setStatus(`${movingPiece.type}を動かしました。`);
+      }
+    }
+
+    function canPromote(piece, fromRow, toRow) {
+      if (!piece) return false;
+      if (piece.promoted) return false;
+
+      const promotable = [
+        PIECES.PAWN,
+        PIECES.LANCE,
+        PIECES.KNIGHT,
+        PIECES.SILVER,
+        PIECES.ROOK,
+        PIECES.BISHOP
+      ];
+
+      if (!promotable.includes(piece.type)) return false;
+
+      const promotionZone = piece.owner === "player"
+        ? [0, 1, 2]
+        : [6, 7, 8];
+
+      return promotionZone.includes(fromRow) || promotionZone.includes(toRow);
+    }
+
+    function promotePiece(piece) {
+      piece.promoted = true;
+
+      switch (piece.type) {
+        case PIECES.PAWN:
+          piece.type = "と";
+          break;
+
+        case PIECES.LANCE:
+          piece.type = "成香";
+          break;
+
+        case PIECES.KNIGHT:
+          piece.type = "成桂";
+          break;
+
+        case PIECES.SILVER:
+          piece.type = "成銀";
+          break;
+
+        case PIECES.ROOK:
+          piece.type = "龍";
+          break;
+
+        case PIECES.BISHOP:
+          piece.type = "馬";
+          break;
       }
     }
 
