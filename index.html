@@ -251,7 +251,7 @@
       </div>
 
       <p class="note">
-        現時点ではルール判定なしです。つまり、どの駒も自由に動かせます。まず画面を完成させ、その後に「歩は前に1マス」などのルールを追加します。
+        現時点では基本の移動ルールだけ入っています。次に、成り・持ち駒・二歩・王手放置禁止などを追加します。
       </p>
     </aside>
   </main>
@@ -275,6 +275,103 @@
     let board = [];
     let selected = null;
     let turn = "player";
+
+    function getForward(owner) {
+      return owner === "player" ? -1 : 1;
+    }
+
+    function isInsideBoard(row, col) {
+      return row >= 0 && row < 9 && col >= 0 && col < 9;
+    }
+
+    function isLegalMove(piece, fromRow, fromCol, toRow, toCol) {
+      if (!piece) return false;
+      if (!isInsideBoard(toRow, toCol)) return false;
+
+      const targetPiece = board[toRow][toCol];
+      if (targetPiece && targetPiece.owner === piece.owner) return false;
+
+      const dr = toRow - fromRow;
+      const dc = toCol - fromCol;
+      const forward = getForward(piece.owner);
+      const absDr = Math.abs(dr);
+      const absDc = Math.abs(dc);
+
+      switch (piece.type) {
+        case PIECES.PAWN:
+          return dr === forward && dc === 0;
+
+        case PIECES.LANCE:
+          return dc === 0 && dr * forward > 0 && isPathClear(fromRow, fromCol, toRow, toCol);
+
+        case PIECES.KNIGHT:
+          return dr === forward * 2 && absDc === 1;
+
+        case PIECES.SILVER:
+          return (
+            (dr === forward && absDc <= 1) ||
+            (dr === -forward && absDc === 1)
+          );
+
+        case PIECES.GOLD:
+        case PIECES.KING_PLAYER:
+        case PIECES.KING_ENEMY:
+          if (piece.type === PIECES.GOLD) {
+            return (
+              (dr === forward && absDc <= 1) ||
+              (dr === 0 && absDc === 1) ||
+              (dr === -forward && dc === 0)
+            );
+          }
+          return absDr <= 1 && absDc <= 1 && !(dr === 0 && dc === 0);
+
+        case PIECES.ROOK:
+          return (dr === 0 || dc === 0) && isPathClear(fromRow, fromCol, toRow, toCol);
+
+        case PIECES.BISHOP:
+          return absDr === absDc && isPathClear(fromRow, fromCol, toRow, toCol);
+
+        default:
+          return false;
+      }
+    }
+
+    function isPathClear(fromRow, fromCol, toRow, toCol) {
+      const rowStep = Math.sign(toRow - fromRow);
+      const colStep = Math.sign(toCol - fromCol);
+
+      let row = fromRow + rowStep;
+      let col = fromCol + colStep;
+
+      while (row !== toRow || col !== toCol) {
+        if (board[row][col]) return false;
+        row += rowStep;
+        col += colStep;
+      }
+
+      return true;
+    }
+
+    function getLegalMoves(row, col) {
+      const piece = board[row][col];
+      if (!piece) return [];
+
+      const moves = [];
+      for (let toRow = 0; toRow < 9; toRow++) {
+        for (let toCol = 0; toCol < 9; toCol++) {
+          if (isLegalMove(piece, row, col, toRow, toCol)) {
+            moves.push({ row: toRow, col: toCol });
+          }
+        }
+      }
+      return moves;
+    }
+
+    function isSelectedLegalMove(row, col) {
+      if (!selected) return false;
+      const piece = board[selected.row][selected.col];
+      return isLegalMove(piece, selected.row, selected.col, row, col);
+    }
 
     function createInitialBoard() {
       const empty = Array.from({ length: 9 }, () => Array(9).fill(null));
@@ -334,6 +431,10 @@
             cell.classList.add("selected");
           }
 
+          if (selected && isSelectedLegalMove(row, col)) {
+            cell.classList.add("can-move");
+          }
+
           const piece = board[row][col];
           if (piece) {
             const pieceElement = document.createElement("div");
@@ -364,13 +465,21 @@
         }
 
         selected = { row, col };
-        setStatus(`${clickedPiece.type}を選択しました。移動先をクリックしてください。`);
+        const legalMoves = getLegalMoves(row, col);
+        setStatus(`${clickedPiece.type}を選択しました。動ける場所は${legalMoves.length}か所です。`);
         renderBoard();
         return;
       }
 
       if (selected.row === row && selected.col === col) {
         clearSelection();
+        return;
+      }
+
+      const movingPiece = board[selected.row][selected.col];
+      if (!isLegalMove(movingPiece, selected.row, selected.col, row, col)) {
+        setStatus("その場所には動けません。光っている場所を選んでください。");
+        renderBoard();
         return;
       }
 
