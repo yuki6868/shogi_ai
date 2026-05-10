@@ -557,6 +557,12 @@
         return;
       }
 
+      if (wouldLeaveKingInCheck(selected.row, selected.col, row, col)) {
+        setStatus("王手を放置する手は指せません。");
+        renderBoard();
+        return;
+      }
+
       movePiece(selected.row, selected.col, row, col);
       selected = null;
       renderBoard();
@@ -594,7 +600,11 @@
 
         setStatus(`${movingPiece.type}で${targetPiece.type}を取りました。`);
       } else {
-        setStatus(`${movingPiece.type}を動かしました。`);
+        if (isKingInCheck(movingPiece.owner === "player" ? "enemy" : "player")) {
+          setStatus("王手です。相手の王に攻撃しています。");
+        } else {
+          setStatus(`${movingPiece.type}を動かしました。`);
+        }
       }
     }
 
@@ -656,6 +666,16 @@
         return;
       }
 
+      if (selectedHandPiece.type === PIECES.PAWN && hasPawnInColumn(col, selectedHandPiece.owner)) {
+        setStatus("二歩です。同じ列に歩があります。");
+        return;
+      }
+
+      if (!canDropPiece(selectedHandPiece.type, row, selectedHandPiece.owner)) {
+        setStatus("その場所には打てません。行き所のない駒になります。");
+        return;
+      }
+
       const droppedPiece = {
         type: selectedHandPiece.type,
         owner: selectedHandPiece.owner,
@@ -673,6 +693,99 @@
       selectedHandPiece = null;
       setStatus(`${droppedPiece.type}を打ちました。`);
       renderBoard();
+    }
+
+    function hasPawnInColumn(col, owner) {
+      for (let row = 0; row < 9; row++) {
+        const piece = board[row][col];
+
+        if (
+          piece &&
+          piece.owner === owner &&
+          piece.type === PIECES.PAWN
+        ) {
+          return true;
+        }
+      }
+
+      return false;
+    }
+
+    function canDropPiece(type, row, owner) {
+      if (owner === "player") {
+        if (type === PIECES.PAWN || type === PIECES.LANCE) {
+          return row !== 0;
+        }
+
+        if (type === PIECES.KNIGHT) {
+          return row > 1;
+        }
+      }
+
+      if (owner === "enemy") {
+        if (type === PIECES.PAWN || type === PIECES.LANCE) {
+          return row !== 8;
+        }
+
+        if (type === PIECES.KNIGHT) {
+          return row < 7;
+        }
+      }
+
+      return true;
+    }
+
+    function isKingInCheck(owner) {
+      let kingPosition = null;
+
+      for (let row = 0; row < 9; row++) {
+        for (let col = 0; col < 9; col++) {
+          const piece = board[row][col];
+
+          if (!piece) continue;
+
+          const isKing =
+            piece.type === PIECES.KING_PLAYER ||
+            piece.type === PIECES.KING_ENEMY;
+
+          if (isKing && piece.owner === owner) {
+            kingPosition = { row, col };
+          }
+        }
+      }
+
+      if (!kingPosition) return false;
+
+      for (let row = 0; row < 9; row++) {
+        for (let col = 0; col < 9; col++) {
+          const piece = board[row][col];
+
+          if (!piece || piece.owner === owner) continue;
+
+          if (
+            isLegalMove(piece, row, col, kingPosition.row, kingPosition.col)
+          ) {
+            return true;
+          }
+        }
+      }
+
+      return false;
+    }
+
+    function wouldLeaveKingInCheck(fromRow, fromCol, toRow, toCol) {
+      const movingPiece = board[fromRow][fromCol];
+      const capturedPiece = board[toRow][toCol];
+
+      board[toRow][toCol] = movingPiece;
+      board[fromRow][fromCol] = null;
+
+      const check = isKingInCheck(movingPiece.owner);
+
+      board[fromRow][fromCol] = movingPiece;
+      board[toRow][toCol] = capturedPiece;
+
+      return check;
     }
 
     function demotePiece(type) {
