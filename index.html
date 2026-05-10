@@ -248,6 +248,7 @@
       <div class="buttons">
         <button type="button" onclick="resetGame()">初期配置に戻す</button>
         <button type="button" onclick="clearSelection()">選択を解除</button>
+        <button type="button" onclick="toggleCPU()">CPU切替</button>
       </div>
 
       <p class="note">
@@ -275,6 +276,7 @@
     let board = [];
     let selected = null;
     let turn = "player";
+    let cpuEnabled = true;
 
     let playerHand = [];
     let enemyHand = [];
@@ -469,7 +471,15 @@
 
             setStatus(`${pieceType}を打つ場所を選んでください。`);
             renderBoard();
-          };
+
+      if (isCheckmate("player")) {
+        setStatus("詰みです。後手の勝ちです。");
+      }
+
+      if (isCheckmate("enemy")) {
+        setStatus("詰みです。先手の勝ちです。");
+      }
+    };
 
           playerHandElement.appendChild(button);
         });
@@ -534,7 +544,7 @@
         }
 
         if (clickedPiece.owner !== turn) {
-          setStatus("今は先手の番です。まずは下側の駒を動かしてください。");
+          setStatus(`今は${turn === "player" ? "先手" : "後手"}の番です。`);
           return;
         }
 
@@ -565,6 +575,8 @@
 
       movePiece(selected.row, selected.col, row, col);
       selected = null;
+
+      switchTurn();
       renderBoard();
     }
 
@@ -692,6 +704,8 @@
 
       selectedHandPiece = null;
       setStatus(`${droppedPiece.type}を打ちました。`);
+
+      switchTurn();
       renderBoard();
     }
 
@@ -807,11 +821,90 @@
       }
     }
 
+    function switchTurn() {
+      turn = turn === "player" ? "enemy" : "player";
+
+      if (turn === "enemy" && cpuEnabled) {
+        setTimeout(cpuMove, 500);
+      }
+    }
+
+    function getAllLegalMoves(owner) {
+      const moves = [];
+
+      for (let row = 0; row < 9; row++) {
+        for (let col = 0; col < 9; col++) {
+          const piece = board[row][col];
+
+          if (!piece || piece.owner !== owner) continue;
+
+          const legalMoves = getLegalMoves(row, col);
+
+          for (const move of legalMoves) {
+            if (
+              !wouldLeaveKingInCheck(
+                row,
+                col,
+                move.row,
+                move.col
+              )
+            ) {
+              moves.push({
+                fromRow: row,
+                fromCol: col,
+                toRow: move.row,
+                toCol: move.col
+              });
+            }
+          }
+        }
+      }
+
+      return moves;
+    }
+
+    function cpuMove() {
+      const legalMoves = getAllLegalMoves("enemy");
+
+      if (legalMoves.length === 0) {
+        setStatus("後手は指せる手がありません。詰みの可能性があります。");
+        return;
+      }
+
+      const randomMove = legalMoves[
+        Math.floor(Math.random() * legalMoves.length)
+      ];
+
+      const movingPiece = board[randomMove.fromRow][randomMove.fromCol];
+
+      movePiece(
+        randomMove.fromRow,
+        randomMove.fromCol,
+        randomMove.toRow,
+        randomMove.toCol
+      );
+
+      setStatus(`CPUが${movingPiece.type}を指しました。`);
+
+      turn = "player";
+      renderBoard();
+    }
+
     function clearSelection() {
       selected = null;
       selectedHandPiece = null;
       setStatus("選択を解除しました。駒をクリックしてください。");
       renderBoard();
+    }
+
+    function toggleCPU() {
+      cpuEnabled = !cpuEnabled;
+      setStatus(`CPUを${cpuEnabled ? "ON" : "OFF"}にしました。`);
+    }
+
+    function isCheckmate(owner) {
+      const legalMoves = getAllLegalMoves(owner);
+      return legalMoves.length === 0 && isKingInCheck(owner);
     }
 
     function resetGame() {
