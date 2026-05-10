@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>せめぎ合い将棋AI - 将棋盤</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f3efe5;
+      color: #2f261d;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 24px;
+    }
+
+    .app {
+      width: min(1100px, 100%);
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      gap: 24px;
+      align-items: start;
+    }
+
+    .game-area {
+      background: #fffaf0;
+      border: 1px solid rgba(80, 55, 30, 0.18);
+      border-radius: 24px;
+      padding: 24px;
+      box-shadow: 0 18px 45px rgba(80, 55, 30, 0.15);
+    }
+
+    .title {
+      margin: 0 0 8px;
+      font-size: 28px;
+      letter-spacing: 0.04em;
+    }
+
+    .lead {
+      margin: 0 0 20px;
+      color: #756556;
+      line-height: 1.7;
+    }
+
+    .hands {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      margin: 12px 0;
+    }
+
+    .hand-box {
+      flex: 1;
+      min-height: 54px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      background: #efe2c9;
+      border: 1px solid rgba(80, 55, 30, 0.16);
+      font-size: 14px;
+      color: #5c4b3b;
+    }
+
+    .hand-title {
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .board-wrap {
+      display: flex;
+      justify-content: center;
+      margin: 16px 0;
+    }
+
+    .board {
+      width: min(720px, 100%);
+      aspect-ratio: 1 / 1;
+      display: grid;
+      grid-template-columns: repeat(9, 1fr);
+      grid-template-rows: repeat(9, 1fr);
+      background: #d6a85f;
+      border: 4px solid #4b3521;
+      box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.25);
+    }
+
+    .cell {
+      position: relative;
+      border-right: 1px solid rgba(60, 38, 18, 0.75);
+      border-bottom: 1px solid rgba(60, 38, 18, 0.75);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.12s ease, transform 0.12s ease;
+    }
+
+    .cell:nth-child(9n) {
+      border-right: none;
+    }
+
+    .cell:nth-last-child(-n + 9) {
+      border-bottom: none;
+    }
+
+    .cell.selected {
+      background: rgba(255, 255, 255, 0.35);
+      outline: 3px solid rgba(120, 60, 20, 0.65);
+      outline-offset: -3px;
+    }
+
+    .cell.can-move {
+      background: rgba(255, 255, 255, 0.18);
+    }
+
+    .piece {
+      width: 72%;
+      height: 82%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-weight: 800;
+      font-size: clamp(18px, 4vw, 34px);
+      color: #27180c;
+      background: linear-gradient(180deg, #f8df9b 0%, #e7bd63 100%);
+      clip-path: polygon(50% 0%, 88% 22%, 82% 100%, 18% 100%, 12% 22%);
+      border: 1px solid rgba(60, 38, 18, 0.5);
+      text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
+      box-shadow: 0 3px 5px rgba(60, 38, 18, 0.25);
+    }
+
+    .piece.enemy {
+      transform: rotate(180deg);
+    }
+
+    .piece.player {
+      transform: rotate(0deg);
+    }
+
+    .piece.promoted {
+      color: #9f2a15;
+    }
+
+    .side-panel {
+      background: #fffaf0;
+      border: 1px solid rgba(80, 55, 30, 0.18);
+      border-radius: 24px;
+      padding: 22px;
+      box-shadow: 0 18px 45px rgba(80, 55, 30, 0.12);
+    }
+
+    .status-title {
+      margin: 0 0 12px;
+      font-size: 20px;
+    }
+
+    .status-box {
+      padding: 14px;
+      border-radius: 16px;
+      background: #f3ead7;
+      line-height: 1.7;
+      color: #5c4b3b;
+      min-height: 110px;
+    }
+
+    .buttons {
+      display: grid;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    button {
+      border: none;
+      border-radius: 14px;
+      padding: 12px 14px;
+      font-weight: 700;
+      cursor: pointer;
+      background: #4b3521;
+      color: white;
+      transition: transform 0.12s ease, opacity 0.12s ease;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      opacity: 0.92;
+    }
+
+    .note {
+      margin-top: 18px;
+      color: #8a7a68;
+      font-size: 13px;
+      line-height: 1.7;
+    }
+
+    @media (max-width: 900px) {
+      body {
+        align-items: start;
+        padding: 14px;
+      }
+
+      .app {
+        grid-template-columns: 1fr;
+      }
+
+      .game-area,
+      .side-panel {
+        padding: 16px;
+        border-radius: 18px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <section class="game-area">
+      <h1 class="title">せめぎ合い将棋AI</h1>
+      <p class="lead">まずは、駒をクリックして動かせる将棋盤です。次に合法手判定、持ち駒、AI接続を追加していきます。</p>
+
+      <div class="hands">
+        <div class="hand-box">
+          <div class="hand-title">後手の持ち駒</div>
+          <div id="enemyHand">なし</div>
+        </div>
+      </div>
+
+      <div class="board-wrap">
+        <div id="board" class="board"></div>
+      </div>
+
+      <div class="hands">
+        <div class="hand-box">
+          <div class="hand-title">先手の持ち駒</div>
+          <div id="playerHand">なし</div>
+        </div>
+      </div>
+    </section>
+
+    <aside class="side-panel">
+      <h2 class="status-title">状況</h2>
+      <div id="status" class="status-box">駒をクリックして選択してください。</div>
+
+      <div class="buttons">
+        <button type="button" onclick="resetGame()">初期配置に戻す</button>
+        <button type="button" onclick="clearSelection()">選択を解除</button>
+      </div>
+
+      <p class="note">
+        現時点ではルール判定なしです。つまり、どの駒も自由に動かせます。まず画面を完成させ、その後に「歩は前に1マス」などのルールを追加します。
+      </p>
+    </aside>
+  </main>
+
+  <script>
+    const boardElement = document.getElementById("board");
+    const statusElement = document.getElementById("status");
+
+    const PIECES = {
+      KING_PLAYER: "玉",
+      KING_ENEMY: "王",
+      ROOK: "飛",
+      BISHOP: "角",
+      GOLD: "金",
+      SILVER: "銀",
+      KNIGHT: "桂",
+      LANCE: "香",
+      PAWN: "歩"
+    };
+
+    let board = [];
+    let selected = null;
+    let turn = "player";
+
+    function createInitialBoard() {
+      const empty = Array.from({ length: 9 }, () => Array(9).fill(null));
+
+      empty[0] = [
+        enemy(PIECES.LANCE),
+        enemy(PIECES.KNIGHT),
+        enemy(PIECES.SILVER),
+        enemy(PIECES.GOLD),
+        enemy(PIECES.KING_ENEMY),
+        enemy(PIECES.GOLD),
+        enemy(PIECES.SILVER),
+        enemy(PIECES.KNIGHT),
+        enemy(PIECES.LANCE)
+      ];
+      empty[1][1] = enemy(PIECES.ROOK);
+      empty[1][7] = enemy(PIECES.BISHOP);
+      empty[2] = Array.from({ length: 9 }, () => enemy(PIECES.PAWN));
+
+      empty[6] = Array.from({ length: 9 }, () => player(PIECES.PAWN));
+      empty[7][1] = player(PIECES.BISHOP);
+      empty[7][7] = player(PIECES.ROOK);
+      empty[8] = [
+        player(PIECES.LANCE),
+        player(PIECES.KNIGHT),
+        player(PIECES.SILVER),
+        player(PIECES.GOLD),
+        player(PIECES.KING_PLAYER),
+        player(PIECES.GOLD),
+        player(PIECES.SILVER),
+        player(PIECES.KNIGHT),
+        player(PIECES.LANCE)
+      ];
+
+      return empty;
+    }
+
+    function player(type) {
+      return { type, owner: "player", promoted: false };
+    }
+
+    function enemy(type) {
+      return { type, owner: "enemy", promoted: false };
+    }
+
+    function renderBoard() {
+      boardElement.innerHTML = "";
+
+      for (let row = 0; row < 9; row++) {
+        for (let col = 0; col < 9; col++) {
+          const cell = document.createElement("div");
+          cell.className = "cell";
+          cell.dataset.row = row;
+          cell.dataset.col = col;
+
+          if (selected && selected.row === row && selected.col === col) {
+            cell.classList.add("selected");
+          }
+
+          const piece = board[row][col];
+          if (piece) {
+            const pieceElement = document.createElement("div");
+            pieceElement.className = `piece ${piece.owner}`;
+            if (piece.promoted) pieceElement.classList.add("promoted");
+            pieceElement.textContent = piece.type;
+            cell.appendChild(pieceElement);
+          }
+
+          cell.addEventListener("click", () => handleCellClick(row, col));
+          boardElement.appendChild(cell);
+        }
+      }
+    }
+
+    function handleCellClick(row, col) {
+      const clickedPiece = board[row][col];
+
+      if (!selected) {
+        if (!clickedPiece) {
+          setStatus("そこには駒がありません。動かしたい駒をクリックしてください。");
+          return;
+        }
+
+        if (clickedPiece.owner !== turn) {
+          setStatus("今は先手の番です。まずは下側の駒を動かしてください。");
+          return;
+        }
+
+        selected = { row, col };
+        setStatus(`${clickedPiece.type}を選択しました。移動先をクリックしてください。`);
+        renderBoard();
+        return;
+      }
+
+      if (selected.row === row && selected.col === col) {
+        clearSelection();
+        return;
+      }
+
+      movePiece(selected.row, selected.col, row, col);
+      selected = null;
+      renderBoard();
+    }
+
+    function movePiece(fromRow, fromCol, toRow, toCol) {
+      const movingPiece = board[fromRow][fromCol];
+      const targetPiece = board[toRow][toCol];
+
+      if (!movingPiece) return;
+
+      if (targetPiece && targetPiece.owner === movingPiece.owner) {
+        setStatus("自分の駒がある場所には移動できません。別の場所を選んでください。");
+        return;
+      }
+
+      board[toRow][toCol] = movingPiece;
+      board[fromRow][fromCol] = null;
+
+      if (targetPiece) {
+        setStatus(`${movingPiece.type}で${targetPiece.type}を取りました。`);
+      } else {
+        setStatus(`${movingPiece.type}を動かしました。`);
+      }
+    }
+
+    function clearSelection() {
+      selected = null;
+      setStatus("選択を解除しました。駒をクリックしてください。");
+      renderBoard();
+    }
+
+    function resetGame() {
+      board = createInitialBoard();
+      selected = null;
+      turn = "player";
+      setStatus("初期配置に戻しました。先手の駒をクリックしてください。");
+      renderBoard();
+    }
+
+    function setStatus(message) {
+      statusElement.textContent = message;
+    }
+
+    resetGame();
+  </script>
+</body>
+</html>
