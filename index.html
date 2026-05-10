@@ -245,6 +245,13 @@
       <h2 class="status-title">状況</h2>
       <div id="status" class="status-box">駒をクリックして選択してください。</div>
 
+      <div style="margin-top:14px;padding:12px;border-radius:14px;background:#efe2c9;line-height:1.8;">
+        <strong>学習AI</strong><br>
+        推定レベル: <span id="playerLevel">1</span><br>
+        良い手: <span id="goodMoves">0</span><br>
+        ミス: <span id="mistakes">0</span>
+      </div>
+
       <div class="buttons">
         <button type="button" onclick="resetGame()">初期配置に戻す</button>
         <button type="button" onclick="clearSelection()">選択を解除</button>
@@ -277,6 +284,13 @@
     let selected = null;
     let turn = "player";
     let cpuEnabled = true;
+
+    let playerModel = {
+      level: 1,
+      mistakes: 0,
+      goodMoves: 0,
+      lastScore: 0
+    };
 
     let playerHand = [];
     let enemyHand = [];
@@ -530,6 +544,23 @@
       }
     }
 
+    function evaluatePlayerMove(fromRow, fromCol, toRow, toCol) {
+      const before = evaluateBoard();
+
+      const movingPiece = board[fromRow][fromCol];
+      const capturedPiece = board[toRow][toCol];
+
+      board[toRow][toCol] = movingPiece;
+      board[fromRow][fromCol] = null;
+
+      const after = evaluateBoard();
+
+      board[fromRow][fromCol] = movingPiece;
+      board[toRow][toCol] = capturedPiece;
+
+      updatePlayerModel(before, after);
+    }
+
     function handleCellClick(row, col) {
       if (selectedHandPiece) {
         handleDropPiece(row, col);
@@ -572,6 +603,8 @@
         renderBoard();
         return;
       }
+
+      evaluatePlayerMove(selected.row, selected.col, row, col);
 
       movePiece(selected.row, selected.col, row, col);
       selected = null;
@@ -863,6 +896,158 @@
       return moves;
     }
 
+    function updatePlayerModel(beforeScore, afterScore) {
+      const diff = afterScore - beforeScore;
+
+      if (diff < -400) {
+        playerModel.mistakes += 1;
+      }
+
+      if (diff > 250) {
+        playerModel.goodMoves += 1;
+      }
+
+      const skill = playerModel.goodMoves - playerModel.mistakes;
+
+      if (skill > 8) {
+        playerModel.level = 5;
+      } else if (skill > 5) {
+        playerModel.level = 4;
+      } else if (skill > 2) {
+        playerModel.level = 3;
+      } else if (skill > -2) {
+        playerModel.level = 2;
+      } else {
+        playerModel.level = 1;
+      }
+
+      playerModel.lastScore = afterScore;
+    }
+
+    function getTargetScore() {
+      switch (playerModel.level) {
+        case 1:
+          return 150;
+
+        case 2:
+          return 300;
+
+        case 3:
+          return 450;
+
+        case 4:
+          return 650;
+
+        case 5:
+          return 900;
+
+        default:
+          return 400;
+      }
+    }
+
+    function evaluateBoard() {
+      const values = {
+        [PIECES.PAWN]: 100,
+        [PIECES.LANCE]: 300,
+        [PIECES.KNIGHT]: 350,
+        [PIECES.SILVER]: 500,
+        [PIECES.GOLD]: 600,
+        [PIECES.BISHOP]: 800,
+        [PIECES.ROOK]: 1000,
+        [PIECES.KING_PLAYER]: 99999,
+        [PIECES.KING_ENEMY]: 99999,
+        "と": 600,
+        "成香": 500,
+        "成桂": 550,
+        "成銀": 650,
+        "馬": 1200,
+        "龍": 1400
+      };
+
+      let score = 0;
+
+      for (let row = 0; row < 9; row++) {
+        for (let col = 0; col < 9; col++) {
+          const piece = board[row][col];
+          if (!piece) continue;
+
+          const value = values[piece.type] || 0;
+
+          if (piece.owner === "enemy") {
+            score += value;
+          } else {
+            score -= value;
+          }
+        }
+      }
+
+      return score;
+    }
+
+    function simulateMove(move) {
+      const movingPiece = board[move.fromRow][move.fromCol];
+      const capturedPiece = board[move.toRow][move.toCol];
+
+      board[move.toRow][move.toCol] = movingPiece;
+      board[move.fromRow][move.fromCol] = null;
+
+      const score = evaluateBoard();
+      const givesCheck = isKingInCheck("player");
+
+      board[move.fromRow][move.fromCol] = movingPiece;
+      board[move.toRow][move.toCol] = capturedPiece;
+
+      return {
+        score,
+        givesCheck
+      };
+    }
+
+    function chooseBalancedMove(moves) {
+      const evaluatedMoves = moves.map((move) => {
+        const result = simulateMove(move);
+
+        return {
+          ...move,
+          score: result.score,
+          givesCheck: result.givesCheck
+        };
+      });
+
+      evaluatedMoves.sort((a, b) => b.score - a.score);
+
+      const targetScore = getTargetScore();
+
+      let bestMove = evaluatedMoves[0];
+      let bestDistance = Infinity;
+
+      for (const move of evaluatedMoves) {
+        let distance = Math.abs(move.score - targetScore);
+
+        if (move.givesCheck) {
+          distance -= 120;
+        }
+
+        const swing = Math.abs(move.score);
+
+        if (swing > 1800) {
+          distance += 350;
+        }
+
+        if (swing > 2500) {
+          distance += 800;
+        }
+
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          bestMove = move;
+        }
+      }
+
+      return bestMove;
+    }
+
     function cpuMove() {
       const legalMoves = getAllLegalMoves("enemy");
 
@@ -871,20 +1056,28 @@
         return;
       }
 
-      const randomMove = legalMoves[
-        Math.floor(Math.random() * legalMoves.length)
-      ];
+      const selectedMove = chooseBalancedMove(legalMoves);
 
-      const movingPiece = board[randomMove.fromRow][randomMove.fromCol];
+      const movingPiece = board[selectedMove.fromRow][selectedMove.fromCol];
 
       movePiece(
-        randomMove.fromRow,
-        randomMove.fromCol,
-        randomMove.toRow,
-        randomMove.toCol
+        selectedMove.fromRow,
+        selectedMove.fromCol,
+        selectedMove.toRow,
+        selectedMove.toCol
       );
 
-      setStatus(`CPUが${movingPiece.type}を指しました。`);
+      const currentScore = evaluateBoard();
+
+      if (currentScore > 1200) {
+        setStatus(`CPUが${movingPiece.type}を指しました。かなり優勢です。`);
+      } else if (currentScore > 300) {
+        setStatus(`CPUが${movingPiece.type}を指しました。接戦です。`);
+      } else if (currentScore > -300) {
+        setStatus(`CPUが${movingPiece.type}を指しました。互角です。`);
+      } else {
+        setStatus(`CPUが${movingPiece.type}を指しました。あなたが優勢です。`);
+      }
 
       turn = "player";
       renderBoard();
@@ -918,8 +1111,15 @@
       renderBoard();
     }
 
+    function updateLearningPanel() {
+      document.getElementById("playerLevel").textContent = playerModel.level;
+      document.getElementById("goodMoves").textContent = playerModel.goodMoves;
+      document.getElementById("mistakes").textContent = playerModel.mistakes;
+    }
+
     function setStatus(message) {
       statusElement.textContent = message;
+      updateLearningPanel();
     }
 
     resetGame();
