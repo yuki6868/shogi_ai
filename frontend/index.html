@@ -449,9 +449,9 @@
       legalMovesCache = [];
     }
 
-    function findLegalMoveForSelected(row, col) {
+    function findLegalMovesForSelected(row, col) {
       if (selected) {
-        return legalMovesCache.find((move) => {
+        return legalMovesCache.filter((move) => {
           return (
             !move.drop &&
             move.from &&
@@ -464,7 +464,7 @@
       }
 
       if (selectedHandPiece) {
-        return legalMovesCache.find((move) => {
+        return legalMovesCache.filter((move) => {
           return (
             move.drop &&
             aiPieceToJapanese(move.piece) === selectedHandPiece.type &&
@@ -474,11 +474,40 @@
         });
       }
 
-      return null;
+      return [];
+    }
+
+    function findLegalMoveForSelected(row, col) {
+      const moves = findLegalMovesForSelected(row, col);
+      return moves[0] || null;
+    }
+
+    function chooseLegalMoveForSelected(row, col) {
+      const moves = findLegalMovesForSelected(row, col);
+
+      if (moves.length === 0) {
+        return null;
+      }
+
+      const promoteMove = moves.find((move) => move.promote);
+      const normalMove = moves.find((move) => !move.promote);
+
+      if (promoteMove && normalMove) {
+        const movingPiece = selected
+          ? board[selected.row][selected.col]
+          : null;
+
+        const pieceName = movingPiece ? movingPiece.type : "この駒";
+        const shouldPromote = confirm(`${pieceName}を成りますか？`);
+
+        return shouldPromote ? promoteMove : normalMove;
+      }
+
+      return moves[0];
     }
 
     function isSelectedLegalMove(row, col) {
-      return Boolean(findLegalMoveForSelected(row, col));
+      return findLegalMovesForSelected(row, col).length > 0;
     }
 
     function hasAnyLegalMoveFromSquare(row, col) {
@@ -513,19 +542,60 @@
       if (!res.ok) {
         const errorText = await res.text();
         console.error("AI APIエラー:", res.status, errorText);
-        alert(`AI APIエラー: ${res.status}\n${errorText}`);
+        setStatus(`AI APIエラー: ${res.status}`);
         return;
       }
 
       const data = await res.json();
 
       if (!data.ok || !data.move) {
-        console.log("AIの合法手なし", data);
-        alert("AIの合法手がありません");
+        await handleNoLegalMoves(turn);
         return;
       }
 
       applyAiMove(data.move);
+    }
+
+    async function handleNoLegalMoves(owner) {
+      const isCheck = await fetchCheckState(owner);
+
+      if (isCheck) {
+        if (owner === "player") {
+          setStatus("詰みです。後手の勝ちです。");
+          alert("詰みです。後手の勝ちです。");
+        } else {
+          setStatus("詰みです。先手の勝ちです。");
+          alert("詰みです。先手の勝ちです。");
+        }
+      } else {
+        setStatus("合法手がありません。引き分け扱いにします。");
+        alert("合法手がありません。引き分け扱いにします。");
+      }
+    }
+
+    async function fetchCheckState(owner) {
+      const payload = {
+        board: board,
+        playerHand: playerHand,
+        enemyHand: enemyHand,
+        turn: owner
+      };
+
+      const res = await fetch("http://127.0.0.1:8000/api/check-state", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+        console.error("王手判定APIエラー:", res.status);
+        return false;
+      }
+
+      const data = await res.json();
+      return Boolean(data.inCheck);
     }
 
     function aiPieceToJapanese(type) {
@@ -767,7 +837,7 @@
 
     async function handleCellClick(row, col) {
       if (selectedHandPiece) {
-        handleDropPiece(row, col);
+        await handleDropPiece(row, col);
         return;
       }
 
@@ -805,7 +875,7 @@
         return;
       }
 
-      const legalMove = findLegalMoveForSelected(row, col);
+      const legalMove = chooseLegalMoveForSelected(row, col);
 
       if (!legalMove) {
         setStatus("その場所には動けません。Python判定で合法手ではありません。");
@@ -820,6 +890,9 @@
 
       switchTurn();
       renderBoard();
+
+      const ended = await checkGameEndOrContinue();
+      if (ended) return;
 
       if (turn === "enemy") {
         setTimeout(requestAiMove, 500);
@@ -837,27 +910,24 @@
 
       if (forcePromote) {
         promotePiece(movingPiece);
-      } else if (canPromote(movingPiece, fromRow, toRow)) {
-        const shouldPromote = confirm(`${movingPiece.type}を成りますか？`);
-        if (shouldPromote) {
-          promotePiece(movingPiece);
-        }
       }
 
       if (targetPiece) {
         const capturedType = demotePiece(targetPiece.type);
+
         if (movingPiece.owner === "player") {
           playerHand.push(capturedType);
         } else {
           enemyHand.push(capturedType);
         }
+
         setStatus(`${movingPiece.type}で${targetPiece.type}を取りました。`);
       } else {
         setStatus(`${movingPiece.type}を動かしました。`);
       }
     }
 
-    function handleDropPiece(row, col) {
+    async function handleDropPiece(row, col) {
       const legalMove = findLegalMoveForSelected(row, col);
 
       if (!legalMove) {
@@ -883,12 +953,28 @@
       clearLegalMovesCache();
 
       setStatus(`${droppedPiece.type}を打ちました。`);
+
       switchTurn();
       renderBoard();
+
+      const ended = await checkGameEndOrContinue();
+      if (ended) return;
 
       if (turn === "enemy") {
         setTimeout(requestAiMove, 500);
       }
+    }
+
+    async function checkGameEndOrContinue() {
+      const moves = await fetchLegalMovesFromPython();
+
+      if (moves.length === 0) {
+        await handleNoLegalMoves(turn);
+        return true;
+      }
+
+      clearLegalMovesCache();
+      return false;
     }
 
     function hasPawnInColumn(col, owner) {

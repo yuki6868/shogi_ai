@@ -65,3 +65,13 @@ def ai_move(req: AiMoveRequest):
         "move": selected.to_dict(),
         "legalMoveCount": len(moves),
     }
+
+@app.post("/api/check-state")
+def check_state(req: AiMoveRequest):
+    shogi = ShogiBoard.from_html_state(req.model_dump())
+
+    return {
+        "ok": True,
+        "turn": req.turn,
+        "inCheck": shogi.is_in_check(req.turn),
+    }
