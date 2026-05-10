@@ -225,7 +225,7 @@
       <div class="hands">
         <div class="hand-box">
           <div class="hand-title">後手の持ち駒</div>
-          <div id="enemyHand">なし</div>
+          <div id="enemyHand"></div>
         </div>
       </div>
 
@@ -236,7 +236,7 @@
       <div class="hands">
         <div class="hand-box">
           <div class="hand-title">先手の持ち駒</div>
-          <div id="playerHand">なし</div>
+          <div id="playerHand"></div>
         </div>
       </div>
     </section>
@@ -275,6 +275,11 @@
     let board = [];
     let selected = null;
     let turn = "player";
+
+    let playerHand = [];
+    let enemyHand = [];
+
+    let selectedHandPiece = null;
 
     function getForward(owner) {
       return owner === "player" ? -1 : 1;
@@ -438,7 +443,51 @@
       return { type, owner: "enemy", promoted: false };
     }
 
+    function renderHands() {
+      const playerHandElement = document.getElementById("playerHand");
+      const enemyHandElement = document.getElementById("enemyHand");
+
+      playerHandElement.innerHTML = "";
+      enemyHandElement.innerHTML = "";
+
+      if (playerHand.length === 0) {
+        playerHandElement.textContent = "なし";
+      } else {
+        playerHand.forEach((pieceType, index) => {
+          const button = document.createElement("button");
+          button.textContent = pieceType;
+          button.style.marginRight = "6px";
+          button.style.marginBottom = "6px";
+
+          button.onclick = () => {
+            selected = null;
+            selectedHandPiece = {
+              owner: "player",
+              index,
+              type: pieceType
+            };
+
+            setStatus(`${pieceType}を打つ場所を選んでください。`);
+            renderBoard();
+          };
+
+          playerHandElement.appendChild(button);
+        });
+      }
+
+      if (enemyHand.length === 0) {
+        enemyHandElement.textContent = "なし";
+      } else {
+        enemyHand.forEach((pieceType) => {
+          const span = document.createElement("span");
+          span.textContent = pieceType + " ";
+          enemyHandElement.appendChild(span);
+        });
+      }
+    }
+
     function renderBoard() {
+      renderHands();
       boardElement.innerHTML = "";
 
       for (let row = 0; row < 9; row++) {
@@ -472,6 +521,10 @@
     }
 
     function handleCellClick(row, col) {
+      if (selectedHandPiece) {
+        handleDropPiece(row, col);
+        return;
+      }
       const clickedPiece = board[row][col];
 
       if (!selected) {
@@ -531,6 +584,14 @@
       }
 
       if (targetPiece) {
+        const capturedType = demotePiece(targetPiece.type);
+
+        if (movingPiece.owner === "player") {
+          playerHand.push(capturedType);
+        } else {
+          enemyHand.push(capturedType);
+        }
+
         setStatus(`${movingPiece.type}で${targetPiece.type}を取りました。`);
       } else {
         setStatus(`${movingPiece.type}を動かしました。`);
@@ -589,8 +650,53 @@
       }
     }
 
+    function handleDropPiece(row, col) {
+      if (board[row][col]) {
+        setStatus("駒がある場所には打てません。");
+        return;
+      }
+
+      const droppedPiece = {
+        type: selectedHandPiece.type,
+        owner: selectedHandPiece.owner,
+        promoted: false
+      };
+
+      board[row][col] = droppedPiece;
+
+      if (selectedHandPiece.owner === "player") {
+        playerHand.splice(selectedHandPiece.index, 1);
+      } else {
+        enemyHand.splice(selectedHandPiece.index, 1);
+      }
+
+      selectedHandPiece = null;
+      setStatus(`${droppedPiece.type}を打ちました。`);
+      renderBoard();
+    }
+
+    function demotePiece(type) {
+      switch (type) {
+        case "と":
+          return PIECES.PAWN;
+        case "成香":
+          return PIECES.LANCE;
+        case "成桂":
+          return PIECES.KNIGHT;
+        case "成銀":
+          return PIECES.SILVER;
+        case "龍":
+          return PIECES.ROOK;
+        case "馬":
+          return PIECES.BISHOP;
+        default:
+          return type;
+      }
+    }
+
     function clearSelection() {
       selected = null;
+      selectedHandPiece = null;
       setStatus("選択を解除しました。駒をクリックしてください。");
       renderBoard();
     }
@@ -599,6 +705,9 @@
       board = createInitialBoard();
       selected = null;
       turn = "player";
+      playerHand = [];
+      enemyHand = [];
+      selectedHandPiece = null;
       setStatus("初期配置に戻しました。先手の駒をクリックしてください。");
       renderBoard();
     }
