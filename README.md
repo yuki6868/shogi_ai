@@ -1,215 +1,446 @@
-# せめぎ合い将棋AI
 
-子供向けの「せめぎ合い」を重視した教育用将棋AIです。
+# 教育用「せめぎ合い」将棋AI
 
-普通の将棋AIのように最強を目指すのではなく、
+## 概要
 
-- あと少しで勝てそう
-- 惜しかった
-- 次は勝ちたい
+このプロジェクトは、
+「最強AI」ではなく、
 
-と思える対局体験を目指しています。
+- 子供には子供レベル
+- 中級者には中級者レベル
+- 上級者には上級者レベル
 
-現在は、
+で対戦し、
 
-- 将棋盤UI
-- 駒移動
-- 成り
-- 持ち駒
-- 最低限の反則チェック
-- Pythonバックエンド連携
+「あと少しで勝てそう」
+「次は勝ちたい」
 
-まで実装しています。
+と思わせる “せめぎ合い” を演出する教育用将棋AIです。
 
 ---
 
-## ディレクトリ構成
+# コンセプト
+
+通常の将棋AI：
+
+- 常に最善手を目指す
+- 勝率最大化が目的
+
+本プロジェクト：
+
+- 相手の棋力に合わせる
+- 接戦を作る
+- 学習意欲を引き出す
+
+---
+
+# 現在のAI構成
 
 ```text
-shogi-ai/
-├── frontend/
-│   └── index.html
-│
-└── backend/
-    ├── main.py
-    ├── ai/
-    │   ├── board.py
-    │   ├── evaluator.py
-    │   └── move_selector.py
-    └── requirements.txt
+合法手生成
+↓
+Policy AI（自然な候補手）
+↓
+Value AI（局面評価）
+↓
+強さ制御AI（相手レベル調整）
+↓
+最終着手
 ```
 
 ---
+
+# 実装済み機能
 
 ## フロントエンド
 
-HTML側は、盤面操作と表示だけを担当します。
-
-担当内容:
-
-- 将棋盤表示
+- 9×9将棋盤UI
 - 駒移動
-- 持ち駒
 - 成り
-- ターン管理
-- Pythonへの盤面送信
-
-AIロジック、接戦評価、棋力推定はHTML側では管理しません。
-
----
-
-## フロントエンド起動方法
-
-`frontend/index.html` をブラウザで開きます。
-
-```text
-frontend/index.html
-```
+- 持ち駒
+- AI評価値表示
+- 勝率表示
+- 候補手表示
+- playerLevelによる強さ制御
 
 ---
 
 ## バックエンド
 
-Python側では、AIに関する処理を担当します。
+### 将棋エンジン
 
-担当内容:
-
-- AIの思考
-- 棋力推定
-- 接戦演出
 - 合法手生成
-- 評価関数
-- ヒント生成
+- 王手判定
+- 詰み判定
+- 持ち駒処理
+- 成り処理
+
+### Policy AI
+
+役割：
+
+```text
+自然な手を選ぶ
+```
+
+学習：
+
+```text
+局面 → 実際に指された手
+```
+
+教師データ：
+
+```text
+Floodgate CSA棋譜
+```
 
 ---
 
-## バックエンド起動方法
+### Value AI
 
-### 1. backendへ移動
+役割：
+
+```text
+局面評価
+```
+
+学習：
+
+```text
+局面 → 最終勝敗
+```
+
+出力：
+
+```text
+enemy側勝率
+```
+
+---
+
+### 強さ制御AI
+
+役割：
+
+```text
+相手の棋力に合わせる
+```
+
+特徴：
+
+- 初心者には少し弱く
+- 上級者には強く
+- ただし自然な手を維持
+
+---
+
+# ディレクトリ構成
+
+```text
+shogi_ai/
+├── frontend/
+│   └── index.html
+│
+├── backend/
+│   ├── main.py
+│   ├── requirements.txt
+│   │
+│   ├── ai/
+│   │   ├── board.py
+│   │   ├── evaluator.py
+│   │   ├── move_selector.py
+│   │   ├── move_encoder.py
+│   │   ├── board_tensor.py
+│   │   ├── kifu_parser.py
+│   │   │
+│   │   ├── policy_model.py
+│   │   ├── policy_inference.py
+│   │   ├── train_policy.py
+│   │   │
+│   │   ├── value_model.py
+│   │   ├── value_inference.py
+│   │   ├── value_dataset.py
+│   │   ├── train_value.py
+│   │
+│   ├── models/
+│   │   ├── policy_model.pt
+│   │   └── value_model.pt
+│
+├── dataset/
+│   └── floodgate/
+```
+
+---
+
+# 必要環境
+
+- Python 3.11 推奨
+- PyTorch
+- FastAPI
+- Uvicorn
+
+---
+
+# インストール
+
+## 仮想環境作成
+
+```bash
+python -m venv .venv
+```
+
+---
+
+## 仮想環境有効化
+
+### Mac/Linux
+
+```bash
+source .venv/bin/activate
+```
+
+### Windows
+
+```bash
+.venv\Scripts\activate
+```
+
+---
+
+## ライブラリインストール
+
+```bash
+pip install -r backend/requirements.txt
+```
+
+---
+
+# サーバ起動
 
 ```bash
 cd backend
+
+python main.py
 ```
 
-### 2. ライブラリをインストール
-
-```bash
-pip install -r requirements.txt
-```
-
-### 3. FastAPIを起動
+または
 
 ```bash
 uvicorn main:app --reload
 ```
 
-起動後、以下のURLでバックエンドが待ち受けます。
+---
+
+# フロント起動
+
+`frontend/index.html` をブラウザで開く。
+
+---
+
+# Policy AI 学習
+
+## 学習実行
+
+```bash
+cd backend
+
+python -m ai.train_policy --max-files 500 --epochs 5
+```
+
+---
+
+## 学習済みモデル出力
 
 ```text
-http://127.0.0.1:8000
+backend/models/policy_model.pt
 ```
 
 ---
 
-## requirements.txt
+# Value AI 学習
 
-```txt
-fastapi
-uvicorn
-pydantic
+## 学習実行
+
+```bash
+cd backend
+
+python -m ai.train_value --max-files 500 --epochs 5
 ```
 
 ---
 
-## API
+## 学習済みモデル出力
 
-### AIへ盤面送信
+```text
+backend/models/value_model.pt
+```
+
+---
+
+# 学習データ
+
+使用データ：
+
+```text
+Floodgate CSA棋譜
+```
+
+配置場所：
+
+```text
+dataset/floodgate/
+```
+
+---
+
+# API
+
+## AI着手
 
 ```http
 POST /api/ai-move
 ```
 
-HTML側の「Pythonへ盤面送信」ボタンから呼び出します。
-
 ---
 
-## 送信されるデータ例
+## 合法手取得
 
-```json
-{
-  "board": [],
-  "playerHand": [],
-  "enemyHand": [],
-  "turn": "player"
-}
+```http
+POST /api/legal-moves
 ```
 
 ---
 
-## 現在の実装内容
+## 局面評価
 
-実装済み:
-
-- 将棋盤表示
-- 駒移動
-- 成り
-- 持ち駒
-- 駒打ち
-- 二歩チェック
-- 行き所のない駒打ち禁止
-- Python API接続
+```http
+POST /api/evaluate
+```
 
 ---
 
-## 今後実装予定
+## 王手判定
 
-- 完全な合法手判定
-- 王手判定
-- 王手放置禁止
-- 詰み判定
-- AI思考
-- 接戦評価
-- 棋力推定
-- 子供向けヒント
-- 「惜しかった」演出
-- 接戦維持AI
+```http
+POST /api/check-state
+```
 
 ---
 
-## コンセプト
+## Policy AI状態確認
 
-このAIの目的は、単に強い手を指すことではありません。
+```http
+GET /api/policy-status
+```
 
-目的は、
+---
+
+## Value AI状態確認
+
+```http
+GET /api/value-status
+```
+
+---
+
+# 現在の課題
+
+## 学習量不足
+
+現在：
 
 ```text
-子供が「あと少しで勝てそう」と思える対局を作ること
+数十〜数百棋譜
 ```
 
-です。
+理想：
 
-そのために、Python側では以下のような処理を実装していく予定です。
-
-- 強すぎる手を避ける
-- 小さな逆転チャンスを残す
-- 接戦を維持する
-- 子供の成長に合わせて強さを変える
-- 負けたあとに学習ポイントを1つだけ提示する
+```text
+数千〜数万棋譜
+```
 
 ---
 
-## 開発方針
+## 探索不足
 
-HTML側は盤面UIに集中します。
-
-Python側はAIロジックに集中します。
+現在：
 
 ```text
-HTML:
-盤面表示、操作、入力
-
-Python:
-AI、評価、せめぎ合い、学習支援
+1手評価
 ```
 
-この分離により、あとからAIロジックだけを改善しやすくします。
+今後：
+
+```text
+ミニマックス探索
+αβ探索
+```
+
+---
+
+# 今後の予定
+
+## 短期
+
+- Policy AI強化
+- Value AI強化
+- playerLevel改善
+- 接戦制御改善
+
+---
+
+## 中期
+
+- 探索導入
+- 詰み回避強化
+- 戦術理解強化
+
+---
+
+## 長期
+
+- 本格的な棋力推定
+- 教育カリキュラム連携
+- 成長型AI
+- 対局履歴分析
+
+---
+
+# このAIの特徴
+
+普通の将棋AI：
+
+```text
+強さだけ
+```
+
+このAI：
+
+```text
+強さ
++
+自然さ
++
+接戦
++
+教育効果
+```
+
+を重視。
+
+---
+
+# 開発目的
+
+「勝てないからやめる」ではなく、
+
+```text
+あと少しで勝てそう
+↓
+次は勝ちたい
+↓
+勉強したい
+```
+
+を作るAIを目指しています。
