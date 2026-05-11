@@ -170,13 +170,46 @@ def _opening_score(board: ShogiBoard, move: Move, owner: str) -> float:
         if moved_distance >= 3:
             score -= 250.0
 
-    # 序盤の「ただ成れるから成る」を抑える
-    if move.promote:
-        captured = board.board[move.to_row][move.to_col]
-        if captured is None:
-            score -= 500.0
-        else:
-            score -= 150.0
+    # 飛角の突撃しすぎを抑える
+    if (
+        not move.drop
+        and piece_type in ("B", "R")
+        and move.from_row is not None
+        and move.from_col is not None
+    ):
+        moved_distance = (
+            abs(move.to_row - move.from_row)
+            + abs(move.to_col - move.from_col)
+        )
+
+        # 序盤で深く突っ込む
+        if moved_distance >= 4:
+            copied = board.clone()
+            copied.turn = owner
+
+            try:
+                copied.apply_move(move)
+
+                enemy = copied.enemy_of(owner)
+
+                # 相手に取られる可能性
+                enemy_moves = copied.generate_legal_moves(enemy)
+
+                attacked = False
+
+                for em in enemy_moves:
+                    if (
+                        em.to_row == move.to_row
+                        and em.to_col == move.to_col
+                    ):
+                        attacked = True
+                        break
+
+                if attacked:
+                    score -= 500.0
+
+            except Exception:
+                pass
 
     # 歩を自然に進めるのは少し加点
     if (
