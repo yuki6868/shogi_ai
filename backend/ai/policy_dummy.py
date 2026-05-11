@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from ai.board import Move, ShogiBoard
-from ai.move_encoder import move_to_id
 from ai.move_encoder import move_to_id, move_to_readable
 
 

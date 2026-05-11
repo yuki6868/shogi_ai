@@ -130,6 +130,13 @@
       transition: width 0.25s ease;
     }
 
+    .policy-selected {
+      background: rgba(250, 204, 21, 0.18);
+      border-radius: 10px;
+      padding-left: 8px;
+      padding-right: 8px;
+    }
+
     .hands {
       display: flex;
       justify-content: space-between;
@@ -709,7 +716,7 @@
         return;
       }
 
-      updatePolicyCandidatesUI(data.policyCandidates || []);
+      updatePolicyCandidatesUI(data.policyCandidates || [], data.moveId);
 
       applyAiMove(data.move);
 
@@ -719,7 +726,7 @@
       });
     }
 
-    function updatePolicyCandidatesUI(candidates) {
+    function updatePolicyCandidatesUI(candidates, selectedMoveId = null) {
       const element = document.getElementById("policyCandidates");
       if (!element) return;
 
@@ -729,10 +736,13 @@
       }
 
       element.innerHTML = candidates.map((item, index) => {
+        const isSelected = selectedMoveId && item.moveId === selectedMoveId;
+        const label = item.moveText || item.moveId;
+
         return `
-          <div class="policy-row">
+          <div class="policy-row ${isSelected ? "policy-selected" : ""}">
             <span class="policy-move-id">
-              ${index + 1}. ${item.moveText || item.moveId}
+              ${index + 1}. ${isSelected ? "▶ " : ""}${label}
             </span>
             <span class="policy-score">${item.policyScore}</span>
           </div>
