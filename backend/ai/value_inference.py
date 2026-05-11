@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-import math
 from pathlib import Path
 
 import torch
 
-from ai.board import ShogiBoard
 from ai.board_tensor import board_to_full_tensor
-from ai.kifu_parser import create_initial_board
 from ai.path_config import WORKSPACE_DIR
 from ai.value_model import create_value_model
 
@@ -18,109 +15,113 @@ DEFAULT_VALUE_MODEL_PATH = WORKSPACE_DIR / "models" / "value_model.pt"
 
 
 class ValueInference:
-    def __init__(self, model_path: str | Path | None = None):
+    """
+    value_model.pt を使って局面評価を行うクラス。
+
+    ValueModel の出力は logits。
+    sigmoid(logits) で enemy の勝率 0.0〜1.0 に変換する。
+    """
+
+    def __init__(
+        self,
+        model_path: str | Path | None = None,
+        device: str | None = None,
+    ):
         self.model_path = Path(model_path) if model_path else DEFAULT_VALUE_MODEL_PATH
-        self.device = self._get_device()
+        self.device = torch.device(device or self._get_device())
         self.model = None
         self.available = False
 
-        # 初期局面の偏り補正
-        self.initial_logit_bias = 0.0
+        self._load_model()
 
-        self._load()
-
-    def _get_device(self) -> torch.device:
+    def _get_device(self) -> str:
         if torch.cuda.is_available():
-            return torch.device("cuda")
+            return "cuda"
 
-        if torch.backends.mps.is_available():
-            return torch.device("mps")
+        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            return "mps"
 
-        return torch.device("cpu")
+        return "cpu"
 
-    def _load(self) -> None:
+    def _load_model(self) -> None:
         if not self.model_path.exists():
-            print(f"[VALUE] model not found: {self.model_path}")
+            print(f"[ValueInference] model not found: {self.model_path}")
+            self.available = False
             return
 
         try:
             model = create_value_model(device=self.device)
-            state_dict = torch.load(self.model_path, map_location=self.device)
+
+            state_dict = torch.load(
+                self.model_path,
+                map_location=self.device,
+            )
+
             model.load_state_dict(state_dict)
             model.eval()
 
             self.model = model
             self.available = True
 
-            self.initial_logit_bias = self._calculate_initial_logit_bias()
-
-            print(f"[VALUE] loaded: {self.model_path} / device={self.device}")
-            print(f"[VALUE] initial_logit_bias = {self.initial_logit_bias:.4f}")
+            print(f"[ValueInference] loaded: {self.model_path}")
+            print(f"[ValueInference] device: {self.device}")
 
         except Exception as e:
-            print(f"[VALUE] load failed: {e}")
+            print("[ValueInference] load failed:", e)
             self.model = None
             self.available = False
-            self.initial_logit_bias = 0.0
 
     @torch.no_grad()
-    def _predict_raw_logit(self, shogi: ShogiBoard) -> float:
+    def predict_enemy_win_rate(self, shogi) -> float:
+        """
+        enemy の勝率を返す。
+        return: 0.0〜1.0
+        """
+
         if not self.available or self.model is None:
-            raise RuntimeError("value_model.pt が読み込まれていません。")
+            return 0.5
 
-        x = board_to_full_tensor(shogi).unsqueeze(0).to(self.device)
+        x = board_to_full_tensor(shogi)
+        x = x.unsqueeze(0).to(self.device)
+
         logits = self.model(x)
+        prob = torch.sigmoid(logits)
 
-        return float(logits[0].item())
+        value = float(prob.squeeze().item())
+        return max(0.0, min(1.0, value))
 
     @torch.no_grad()
-    def _calculate_initial_logit_bias(self) -> float:
+    def predict_value_for_owner(self, shogi, owner: str = "enemy") -> float:
         """
-        初期局面は本来ほぼ互角なので、
-        value_model.pt が初期局面に出す偏りを補正値として保存する。
+        owner から見た評価値を返す。
+        return: -1.0〜1.0
         """
-        if self.model is None:
-            return 0.0
 
-        initial_board = create_initial_board()
-        initial_board.turn = "player"
+        enemy_win_rate = self.predict_enemy_win_rate(shogi)
 
-        x = board_to_full_tensor(initial_board).unsqueeze(0).to(self.device)
-        logits = self.model(x)
+        if owner == "enemy":
+            owner_win_rate = enemy_win_rate
+        else:
+            owner_win_rate = 1.0 - enemy_win_rate
 
-        return float(logits[0].item())
+        return owner_win_rate * 2.0 - 1.0
 
-    def predict_enemy_win_rate(self, shogi: ShogiBoard) -> float:
+    def evaluate_score(
+        self,
+        shogi,
+        ai_owner: str = "enemy",
+    ) -> int:
         """
-        後手(enemy)の勝率を 0.0〜100.0 で返す。
-        初期局面の偏りを補正する。
+        evaluator.py 互換の評価値を返す。
+        return: おおよそ -1000〜+1000
         """
-        raw_logit = self._predict_raw_logit(shogi)
 
-        # ここが重要：初期局面の偏りを引く
-        calibrated_logit = raw_logit - self.initial_logit_bias
+        value = self.predict_value_for_owner(
+            shogi,
+            owner=ai_owner,
+        )
 
-        prob = 1.0 / (1.0 + math.exp(-calibrated_logit))
-
-        return round(prob * 100, 1)
-
-    def evaluate_score(self, shogi: ShogiBoard, ai_owner: str = "enemy") -> int:
-        """
-        + なら ai_owner 有利
-        - なら ai_owner 不利
-        """
-        raw_logit = self._predict_raw_logit(shogi)
-
-        # 初期局面が0になるように補正
-        calibrated_logit = raw_logit - self.initial_logit_bias
-
-        # logitをそのまま評価値スケールへ変換
-        score = int(600 * calibrated_logit)
-
-        if ai_owner == "enemy":
-            return score
-
-        return -score
+        return int(value * 1000)
 
 
 _value_inference: ValueInference | None = None

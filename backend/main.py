@@ -8,7 +8,13 @@ from pydantic import BaseModel
 
 from ai.board import ShogiBoard
 from ai.evaluator import evaluate_board, evaluate_moves, score_to_win_rate
-from ai.move_selector import select_level_adjusted_move, select_strong_move
+from ai.move_selector import (
+    select_balance_move,
+    select_level_adjusted_move,
+    select_mcts_education_move,
+    select_strong_move,
+)
+from ai.mcts import run_mcts, MCTS_SIMULATIONS, MCTS_DEPTH_LIMIT, MAX_CANDIDATES
 from ai.move_encoder import legal_moves_to_ids, move_to_id, move_to_dict_with_id
 from ai.policy_dummy import (
     filter_policy_candidates,
@@ -139,29 +145,142 @@ def ai_move(req: AiMoveRequest):
             0.0,
         )
 
-    selected = select_level_adjusted_move(
-        evaluated,
+    selected = select_balance_move(
+        evaluated_moves=evaluated,
+        current_score=current_score,
         player_level=req.playerLevel,
+        target_score=0,
     )
+
+    display_score = selected.get("rawScore", selected["score"])
+    display_win_rate = score_to_win_rate(display_score)
 
     return {
         "ok": True,
         "mode": f"LEVEL ADJUST + {policy_mode}",
         "valueAvailable": get_value_inference().available,
-        "selectedBy": "level_adjusted_policy_value",
+        "selectedBy": "balance_policy_value",
         "playerLevel": round(req.playerLevel, 3),
+
         "moveId": move_to_id(selected["move"]),
         "move": move_to_dict_with_id(selected["move"]),
+
+        # 現局面
         "currentScore": current_score,
-        "score": selected["score"],
-        "rawScore": selected.get("rawScore", selected["score"]),
-        "aiWinRate": selected["winRate"],
-        "playerWinRate": round(100 - selected["winRate"], 1),
+
+        # 画面表示用：AIが一手指した直後の評価値
+        "score": display_score,
+        "rawScore": display_score,
+
+        # 内部選択用：相手の最善応手込みの評価値
+        "replyScore": selected["score"],
+
+        "aiWinRate": display_win_rate,
+        "playerWinRate": round(100 - display_win_rate, 1),
+
         "legalMoveCount": len(moves),
         "policyMoveCount": len(policy_moves),
-        "policyCandidates": policy_candidates,
+        "policyCandidates": [
+            {
+                **item,
+                "note": "policyScoreは評価値ではなく、自然さスコアです",
+            }
+            for item in policy_candidates
+        ],
     }
 
+@app.post("/api/ai-move-mcts")
+def ai_move_mcts(req: AiMoveRequest):
+    shogi = ShogiBoard.from_html_state(req.model_dump())
+    shogi.turn = req.turn
+
+    moves = shogi.generate_legal_moves(req.turn)
+
+    if not moves:
+        return {
+            "ok": False,
+            "reason": "合法手がありません",
+            "move": None,
+        }
+
+    current_score = evaluate_board(shogi, ai_owner="enemy")
+
+    evaluated = run_mcts(
+        shogi=shogi,
+        root_owner=req.turn,
+        simulations=MCTS_SIMULATIONS,
+        depth_limit=MCTS_DEPTH_LIMIT,
+    )
+
+    if not evaluated:
+        return {
+            "ok": False,
+            "reason": "MCTS候補手がありません",
+            "move": None,
+        }
+
+    selected = select_balance_move(
+        evaluated_moves=evaluated,
+        current_score=current_score,
+        player_level=req.playerLevel,
+        target_score=0,
+    )
+
+    display_score = selected.get("rawScore", selected["score"])
+    display_win_rate = score_to_win_rate(display_score)
+
+    candidates = [
+        {
+            "moveId": move_to_id(item["move"]),
+            "moveText": move_to_dict_with_id(item["move"]).get("moveText", ""),
+            "score": item["score"],
+            "rawScore": item.get("rawScore", item["score"]),
+            "winRate": item["winRate"],
+            "searchScore": item.get("searchScore", item["score"]),
+            "searchWinRate": item.get("searchWinRate", item["winRate"]),
+            "visitCount": item.get("visitCount", 0),
+            "qValue": item.get("qValue", 0.0),
+            "prior": item.get("prior", 0.0),
+        }
+        for item in evaluated[:8]
+    ]
+
+    return {
+        "ok": True,
+        "mode": "LIGHT MCTS + POLICY + VALUE + EDUCATION CONTROL",
+        "selectedBy": "mcts_education_target_55",
+        "playerLevel": round(req.playerLevel, 3),
+        "valueAvailable": get_value_inference().available,
+
+        "moveId": move_to_id(selected["move"]),
+        "move": move_to_dict_with_id(selected["move"]),
+
+        "currentScore": current_score,
+
+        # 画面表示用：AIが1手指した直後の評価値
+        "score": display_score,
+        "rawScore": display_score,
+
+        # MCTS探索スコアは別名で返す
+        "searchScore": selected.get("searchScore", selected["score"]),
+
+        "aiWinRate": display_win_rate,
+        "playerWinRate": round(100 - display_win_rate, 1),
+
+        "legalMoveCount": len(moves),
+        "mctsSimulations": MCTS_SIMULATIONS,
+        "mctsDepthLimit": MCTS_DEPTH_LIMIT,
+        "maxCandidates": MAX_CANDIDATES,
+        "visitCount": selected.get("visitCount", 0),
+        "qValue": selected.get("qValue", 0.0),
+        "prior": selected.get("prior", 0.0),
+
+        # フロントが見ている名前に合わせる
+        "policyCandidates": candidates,
+
+        # デバッグ用に残す
+        "mctsCandidates": candidates,
+    }
 
 @app.post("/api/ai-move-strong")
 def ai_move_strong(req: AiMoveRequest):

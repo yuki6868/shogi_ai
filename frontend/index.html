@@ -698,7 +698,7 @@
 
       console.log("AIへ送信:", payload);
 
-      const res = await fetch("http://127.0.0.1:8000/api/ai-move", {
+      const res = await fetch("http://127.0.0.1:8000/api/ai-move-mcts", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -745,7 +745,7 @@
             <span class="policy-move-id">
               ${index + 1}. ${isSelected ? "▶ " : ""}${label}
             </span>
-            <span class="policy-score">${item.policyScore}</span>
+            <span class="policy-score">評価 ${item.rawScore ?? item.score}</span>
           </div>
         `;
       }).join("");
@@ -1409,7 +1409,7 @@
       const gameState = getGameState();
 
       try {
-        const response = await fetch("http://127.0.0.1:8000/api/ai-move", {
+        const response = await fetch("http://127.0.0.1:8000/api/ai-move-mcts", {
           method: "POST",
           headers: {
             "Content-Type": "application/json"

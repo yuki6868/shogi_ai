@@ -6,7 +6,7 @@ import math
 from typing import Any
 
 from ai.board import ShogiBoard, Move
-from ai.value_inference import get_value_inference
+# from ai.value_inference import get_value_inference
 
 
 PIECE_VALUES = {
@@ -33,11 +33,6 @@ def owner_sign(owner: str, ai_owner: str = "enemy") -> int:
 
 
 def evaluate_board(shogi: ShogiBoard, ai_owner: str = "enemy") -> int:
-    value_ai = get_value_inference()
-
-    if value_ai.available:
-        return value_ai.evaluate_score(shogi, ai_owner=ai_owner)
-
     score = 0
 
     for r in range(9):

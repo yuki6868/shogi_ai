@@ -4,3 +4,4 @@ pydantic
 py7zr
 torch
 tqdm
+numpy
