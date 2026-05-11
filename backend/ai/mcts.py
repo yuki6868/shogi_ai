@@ -10,22 +10,36 @@ from typing import Optional
 from ai.board import Move, ShogiBoard
 from ai.evaluator import evaluate_board, score_to_win_rate
 from ai.move_encoder import move_to_id
-from ai.policy_dummy import filter_policy_candidates
 from ai.policy_inference import get_policy_inference
 from ai.value_inference import get_value_inference
 
 
-# 探索回数
-# 50だと将棋では浅すぎる
 MCTS_SIMULATIONS = 300
-
-# 深さは浅めにして幅を広げる
 MCTS_DEPTH_LIMIT = 8
 
-# 候補手を少し増やす
 MAX_CANDIDATES = 80
+TACTICAL_CANDIDATE_LIMIT = 80
+
 CPUCT = 1.5
 VALUE_SCALE = 1200.0
+
+
+TACTICAL_VALUES = {
+    "P": 100,
+    "L": 300,
+    "N": 300,
+    "S": 500,
+    "G": 600,
+    "B": 800,
+    "R": 1000,
+    "K": 10000,
+    "+P": 600,
+    "+L": 600,
+    "+N": 600,
+    "+S": 600,
+    "+B": 1100,
+    "+R": 1300,
+}
 
 
 @dataclass
@@ -65,41 +79,165 @@ def _terminal_value(board: ShogiBoard, root_owner: str) -> Optional[float]:
     return 1.0
 
 
-def _softmax_priors(policy_items: list[dict], legal_moves: list[Move]) -> list[tuple[Move, float]]:
-    if not policy_items:
-        n = max(1, len(legal_moves))
-        return [(move, 1.0 / n) for move in legal_moves]
+def _find_king(board: ShogiBoard, owner: str) -> Optional[tuple[int, int]]:
+    for r in range(9):
+        for c in range(9):
+            piece = board.board[r][c]
+            if piece and piece["owner"] == owner and piece["type"] == "K":
+                return r, c
+    return None
 
-    max_score = max(float(item["policyScore"]) for item in policy_items)
-    exp_values = [
-        math.exp(float(item["policyScore"]) - max_score)
-        for item in policy_items
-    ]
-    total = sum(exp_values) or 1.0
 
-    return [
-        (item["move"], exp_value / total)
-        for item, exp_value in zip(policy_items, exp_values)
-    ]
+def _count_material_on_board(board: ShogiBoard) -> int:
+    count = 0
+    for r in range(9):
+        for c in range(9):
+            if board.board[r][c] is not None:
+                count += 1
+    return count
 
-TACTICAL_CANDIDATE_LIMIT = 80
 
-TACTICAL_VALUES = {
-    "P": 100,
-    "L": 300,
-    "N": 300,
-    "S": 500,
-    "G": 600,
-    "B": 800,
-    "R": 1000,
-    "K": 10000,
-    "+P": 600,
-    "+L": 600,
-    "+N": 600,
-    "+S": 600,
-    "+B": 1100,
-    "+R": 1300,
-}
+def _is_opening(board: ShogiBoard) -> bool:
+    # 駒がほとんど減っていない間は序盤扱い
+    return _count_material_on_board(board) >= 36
+
+
+def _distance(a: tuple[int, int], b: tuple[int, int]) -> int:
+    return abs(a[0] - b[0]) + abs(a[1] - b[1])
+
+
+def _king_safety_after_move(board: ShogiBoard, owner: str) -> float:
+    king_pos = _find_king(board, owner)
+    if king_pos is None:
+        return 0.0
+
+    score = 0.0
+    kr, kc = king_pos
+
+    # 玉の周囲に金銀がいると加点
+    for r in range(max(0, kr - 2), min(9, kr + 3)):
+        for c in range(max(0, kc - 2), min(9, kc + 3)):
+            piece = board.board[r][c]
+            if not piece:
+                continue
+
+            if piece["owner"] != owner:
+                continue
+
+            if piece["type"] in ("G", "S"):
+                d = _distance(king_pos, (r, c))
+                if d <= 1:
+                    score += 220.0
+                elif d <= 2:
+                    score += 120.0
+
+    # 玉が中央に残りすぎるのを少し嫌う
+    # 先手側・後手側どちらでも左右に寄るほど加点
+    if kc <= 2 or kc >= 6:
+        score += 180.0
+    elif kc == 3 or kc == 5:
+        score += 80.0
+    else:
+        score -= 120.0
+
+    return score
+
+
+def _opening_score(board: ShogiBoard, move: Move, owner: str) -> float:
+    if not _is_opening(board):
+        return 0.0
+
+    score = 0.0
+
+    piece = None
+    if not move.drop and move.from_row is not None and move.from_col is not None:
+        piece = board.board[move.from_row][move.from_col]
+
+    piece_type = move.piece if move.drop else (piece["type"] if piece else None)
+
+    # 序盤の駒打ちは基本少し減点
+    if move.drop:
+        score -= 350.0
+
+    # 序盤の飛角の突撃を少し抑える
+    if (
+        not move.drop
+        and piece_type in ("B", "R")
+        and move.from_row is not None
+        and move.from_col is not None
+    ):
+        moved_distance = abs(move.to_row - move.from_row) + abs(move.to_col - move.from_col)
+        if moved_distance >= 3:
+            score -= 250.0
+
+    # 序盤の「ただ成れるから成る」を抑える
+    if move.promote:
+        captured = board.board[move.to_row][move.to_col]
+        if captured is None:
+            score -= 500.0
+        else:
+            score -= 150.0
+
+    # 歩を自然に進めるのは少し加点
+    if (
+        not move.drop
+        and piece_type == "P"
+        and move.from_col is not None
+    ):
+        score += 120.0
+
+        # 角道っぽい歩
+        if move.from_col in (2, 6):
+            score += 180.0
+
+        # 飛車先っぽい歩
+        if move.from_col in (1, 7):
+            score += 160.0
+
+    # 金銀を前に出す・玉の近くに寄せる
+    if (
+        not move.drop
+        and piece_type in ("G", "S")
+        and move.from_row is not None
+        and move.from_col is not None
+    ):
+        score += 180.0
+
+        king_pos = _find_king(board, owner)
+        if king_pos is not None:
+            before = _distance(king_pos, (move.from_row, move.from_col))
+            after = _distance(king_pos, (move.to_row, move.to_col))
+
+            if after < before:
+                score += 260.0
+            elif after > before:
+                score -= 120.0
+
+    # 玉を左右に寄せる手を少し加点
+    if (
+        not move.drop
+        and piece_type == "K"
+        and move.from_col is not None
+    ):
+        center_col = 4
+        before_side = abs(move.from_col - center_col)
+        after_side = abs(move.to_col - center_col)
+
+        if after_side > before_side:
+            score += 420.0
+        elif after_side < before_side:
+            score -= 180.0
+
+    # 指した後の玉の安全性
+    copied = board.clone()
+    copied.turn = owner
+    try:
+        copied.apply_move(move)
+        score += _king_safety_after_move(copied, owner)
+    except Exception:
+        score -= 999999.0
+
+    return score
 
 
 def _tactical_score(
@@ -109,16 +247,17 @@ def _tactical_score(
 ) -> float:
     score = 0.0
 
-    # 駒取り
     captured = board.board[move.to_row][move.to_col]
     if captured is not None and captured["owner"] != owner:
         score += TACTICAL_VALUES.get(captured["type"], 0) * 5.0
 
-    # 成り
+    # 成りは強いが、前みたいに過剰評価しない
     if move.promote:
         score += 400.0
 
-    # 1手指した直後の評価
+    # 序盤補正
+    score += _opening_score(board, move, owner)
+
     copied = board.clone()
     copied.turn = owner
 
@@ -130,11 +269,15 @@ def _tactical_score(
             ai_owner=owner,
         )
 
+        # 1手後評価は補助程度
         score += one_ply_score * 0.2
 
-        # 王手
+        # 王手は強いが、序盤は雑な王手を抑える
         if copied.is_in_check(copied.enemy_of(owner)):
-            score += 3000.0
+            if _is_opening(board):
+                score += 800.0
+            else:
+                score += 3000.0
 
     except Exception:
         score -= 999999.0
@@ -151,10 +294,8 @@ def _rank_candidates(
         return []
 
     owner = board.turn
-
     scored: list[dict] = []
 
-    # まず全合法手を戦術評価する
     for move in legal_moves:
         move_id = move_to_id(move)
 
@@ -170,7 +311,6 @@ def _rank_candidates(
             }
         )
 
-    # policy AI は補助点として足す
     policy = get_policy_inference()
 
     if policy.available:
@@ -218,6 +358,7 @@ def _rank_candidates(
 
 def _expand(node: MCTSNode) -> None:
     legal_moves = node.board.generate_legal_moves(node.board.turn)
+
     candidates = _rank_candidates(
         board=node.board,
         legal_moves=legal_moves,
@@ -319,28 +460,19 @@ def run_mcts(
 
     for child in root.children.values():
         q = child.q_value
-
         search_score = _value_to_score(q)
 
-        # AIが1手指した直後の評価値
-        # 画面に出す評価値はこっち
         raw_score = evaluate_board(child.board, ai_owner=root_owner)
 
         results.append(
             {
                 "move": child.move,
-
-                # MCTSの深さ探索結果
-                # 最終選択ではこれを使う
                 "score": search_score,
                 "searchScore": search_score,
                 "winRate": score_to_win_rate(search_score),
                 "searchWinRate": score_to_win_rate(search_score),
-
-                # AIが1手指した直後の表示用
                 "rawScore": raw_score,
                 "rawWinRate": score_to_win_rate(raw_score),
-
                 "visitCount": child.visit_count,
                 "qValue": round(q, 4),
                 "prior": round(child.prior, 4),
