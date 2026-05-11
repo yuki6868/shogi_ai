@@ -230,6 +230,11 @@
       border: 1px solid rgba(60, 38, 18, 0.5);
       text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
       box-shadow: 0 3px 5px rgba(60, 38, 18, 0.25);
+
+      white-space: nowrap;
+      line-height: 1;
+      letter-spacing: -0.08em;
+      box-sizing: border-box;
     }
 
     .piece.enemy {
@@ -238,6 +243,10 @@
 
     .piece.promoted {
       color: #9f2a15;
+    }
+
+    .piece.two-letter {
+      font-size: clamp(14px, 3vw, 24px);
     }
 
     .status-title {
@@ -941,7 +950,15 @@
           if (piece) {
             const pieceElement = document.createElement("div");
             pieceElement.className = `piece ${piece.owner}`;
-            if (piece.promoted) pieceElement.classList.add("promoted");
+
+            if (piece.promoted) {
+              pieceElement.classList.add("promoted");
+            }
+
+            if (piece.type.length >= 2) {
+              pieceElement.classList.add("two-letter");
+            }
+
             pieceElement.textContent = piece.type;
             cell.appendChild(pieceElement);
           }

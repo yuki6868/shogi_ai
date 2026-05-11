@@ -73,14 +73,27 @@ def ai_move(req: AiMoveRequest):
             "move": None,
         }
 
-    evaluated = evaluate_moves(shogi, moves, ai_owner="enemy")
-    selected = select_drama_move(evaluated)
+    current_score = evaluate_board(shogi, ai_owner="enemy")
+
+    evaluated = evaluate_moves(
+        shogi,
+        moves,
+        ai_owner="enemy",
+        lookahead=True,
+    )
+
+    selected = select_drama_move(
+        evaluated,
+        current_score=current_score,
+    )
 
     return {
         "ok": True,
-        "mode": "drama",
+        "mode": "DRAMA THINK",
         "move": selected["move"].to_dict(),
+        "currentScore": current_score,
         "score": selected["score"],
+        "rawScore": selected.get("rawScore", selected["score"]),
         "aiWinRate": selected["winRate"],
         "playerWinRate": round(100 - selected["winRate"], 1),
         "legalMoveCount": len(moves),
@@ -99,19 +112,25 @@ def ai_move_strong(req: AiMoveRequest):
             "move": None,
         }
 
-    evaluated = evaluate_moves(shogi, moves, ai_owner="enemy")
+    evaluated = evaluate_moves(
+        shogi,
+        moves,
+        ai_owner="enemy",
+        lookahead=True,
+    )
+
     selected = select_strong_move(evaluated)
 
     return {
         "ok": True,
-        "mode": "strong",
+        "mode": "STRONG THINK",
         "move": selected["move"].to_dict(),
         "score": selected["score"],
+        "rawScore": selected.get("rawScore", selected["score"]),
         "aiWinRate": selected["winRate"],
         "playerWinRate": round(100 - selected["winRate"], 1),
         "legalMoveCount": len(moves),
     }
-
 
 @app.post("/api/check-state")
 def check_state(req: AiMoveRequest):
