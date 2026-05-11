@@ -176,3 +176,8 @@ def select_best_legal_policy_move(
         raise MoveEncodeError("合法手がありません")
 
     return legal_map[best_move_id]
+
+def move_to_dict_with_id(move: Move) -> dict:
+    data = move.to_dict()
+    data["moveId"] = move_to_id(move)
+    return data

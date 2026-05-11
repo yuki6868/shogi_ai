@@ -9,6 +9,8 @@ from pydantic import BaseModel
 from ai.board import ShogiBoard
 from ai.evaluator import evaluate_board, evaluate_moves, score_to_win_rate
 from ai.move_selector import select_drama_move, select_strong_move
+from ai.move_encoder import legal_moves_to_ids, move_to_id, move_to_dict_with_id
+from ai.policy_dummy import filter_policy_candidates, rank_natural_moves
 
 
 class AiMoveRequest(BaseModel):
@@ -39,10 +41,13 @@ def legal_moves(req: AiMoveRequest):
     shogi = ShogiBoard.from_html_state(req.model_dump())
     moves = shogi.generate_legal_moves(req.turn)
 
+    ranked = rank_natural_moves(shogi, moves, req.turn)
+
     return {
         "ok": True,
         "turn": req.turn,
         "count": len(moves),
+        "policyCandidates": ranked[:12],
         "moves": [m.to_dict() for m in moves],
     }
 
@@ -75,9 +80,16 @@ def ai_move(req: AiMoveRequest):
 
     current_score = evaluate_board(shogi, ai_owner="enemy")
 
-    evaluated = evaluate_moves(
+    policy_moves = filter_policy_candidates(
         shogi,
         moves,
+        owner=req.turn,
+        top_k=12,
+    )
+
+    evaluated = evaluate_moves(
+        shogi,
+        policy_moves,
         ai_owner="enemy",
         lookahead=True,
     )
@@ -90,13 +102,15 @@ def ai_move(req: AiMoveRequest):
     return {
         "ok": True,
         "mode": "DRAMA THINK",
-        "move": selected["move"].to_dict(),
+        "moveId": move_to_id(selected["move"]),
+        "move": move_to_dict_with_id(selected["move"]),
         "currentScore": current_score,
         "score": selected["score"],
         "rawScore": selected.get("rawScore", selected["score"]),
         "aiWinRate": selected["winRate"],
         "playerWinRate": round(100 - selected["winRate"], 1),
         "legalMoveCount": len(moves),
+        "policyMoveCount": len(policy_moves),
     }
 
 
@@ -124,7 +138,8 @@ def ai_move_strong(req: AiMoveRequest):
     return {
         "ok": True,
         "mode": "STRONG THINK",
-        "move": selected["move"].to_dict(),
+        "moveId": move_to_id(selected["move"]),
+        "move": move_to_dict_with_id(selected["move"]),
         "score": selected["score"],
         "rawScore": selected.get("rawScore", selected["score"]),
         "aiWinRate": selected["winRate"],
