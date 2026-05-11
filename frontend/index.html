@@ -719,11 +719,8 @@
       updatePolicyCandidatesUI(data.policyCandidates || [], data.moveId);
 
       applyAiMove(data.move);
-
-      updateEvaluationUI({
-        ...data,
-        mode: "DRAMA MODE"
-      });
+      
+      updateEvaluationUI(data);
     }
 
     function updatePolicyCandidatesUI(candidates, selectedMoveId = null) {
@@ -945,13 +942,7 @@
       }
       return moves;
     }
-
-    function isSelectedLegalMove(row, col) {
-      if (!selected) return false;
-      const piece = board[selected.row][selected.col];
-      return isLegalMove(piece, selected.row, selected.col, row, col);
-    }
-
+    
     function renderHands() {
       renderHand("player", playerHand, document.getElementById("playerHand"));
       renderHand("enemy", enemyHand, document.getElementById("enemyHand"));
@@ -1291,6 +1282,32 @@
         enemyHand,
         turn
       };
+    }
+
+    async function fetchPolicyStatus() {
+      try {
+        const res = await fetch("http://127.0.0.1:8000/api/policy-status");
+
+        if (!res.ok) {
+          console.error("Policy status API error:", res.status);
+          return;
+        }
+
+        const data = await res.json();
+
+        const modeElement = document.getElementById("evalMode");
+        if (!modeElement) return;
+
+        if (data.available) {
+          modeElement.textContent = `POLICY AI / ${data.device}`;
+        } else {
+          modeElement.textContent = "POLICY DUMMY";
+        }
+
+        console.log("policy status:", data);
+      } catch (error) {
+        console.error("policy status error:", error);
+      }
     }
 
     function updateEvaluationUI(data) {
