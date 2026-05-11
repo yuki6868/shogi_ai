@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from ai.board import Move, ShogiBoard
 from ai.move_encoder import move_to_id
+from ai.move_encoder import move_to_id, move_to_readable
 
 
 PIECE_VALUES = {
@@ -106,3 +107,19 @@ def filter_policy_candidates(
     candidates = [item["move"] for item in ranked[:top_k]]
 
     return candidates if candidates else legal_moves
+
+def policy_candidate_to_dict(item: dict) -> dict:
+    move = item["move"]
+    return {
+        "moveId": item["moveId"],
+        "moveText": move_to_readable(move),
+        "policyScore": round(item["policyScore"], 1),
+        "move": move.to_dict(),
+    }
+
+
+def policy_candidates_to_dicts(ranked: list[dict], limit: int = 12) -> list[dict]:
+    return [
+        policy_candidate_to_dict(item)
+        for item in ranked[:limit]
+    ]

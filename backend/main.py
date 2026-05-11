@@ -10,7 +10,11 @@ from ai.board import ShogiBoard
 from ai.evaluator import evaluate_board, evaluate_moves, score_to_win_rate
 from ai.move_selector import select_drama_move, select_strong_move
 from ai.move_encoder import legal_moves_to_ids, move_to_id, move_to_dict_with_id
-from ai.policy_dummy import filter_policy_candidates, rank_natural_moves
+from ai.policy_dummy import (
+    filter_policy_candidates,
+    rank_natural_moves,
+    policy_candidates_to_dicts,
+)
 
 
 class AiMoveRequest(BaseModel):
@@ -40,15 +44,15 @@ def health_check():
 def legal_moves(req: AiMoveRequest):
     shogi = ShogiBoard.from_html_state(req.model_dump())
     moves = shogi.generate_legal_moves(req.turn)
-
     ranked = rank_natural_moves(shogi, moves, req.turn)
 
     return {
         "ok": True,
         "turn": req.turn,
         "count": len(moves),
-        "policyCandidates": ranked[:12],
-        "moves": [m.to_dict() for m in moves],
+        "moveIds": legal_moves_to_ids(moves),
+        "policyCandidates": policy_candidates_to_dicts(ranked, limit=12),
+        "moves": [move_to_dict_with_id(m) for m in moves],
     }
 
 
@@ -99,6 +103,8 @@ def ai_move(req: AiMoveRequest):
         current_score=current_score,
     )
 
+    ranked = rank_natural_moves(shogi, moves, req.turn)
+
     return {
         "ok": True,
         "mode": "DRAMA THINK",
@@ -110,6 +116,8 @@ def ai_move(req: AiMoveRequest):
         "aiWinRate": selected["winRate"],
         "playerWinRate": round(100 - selected["winRate"], 1),
         "legalMoveCount": len(moves),
+        "policyMoveCount": len(policy_moves),
+        "policyCandidates": policy_candidates_to_dicts(ranked, limit=12),
         "policyMoveCount": len(policy_moves),
     }
 

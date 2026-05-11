@@ -216,6 +216,39 @@
       background: rgba(255, 255, 255, 0.18);
     }
 
+    .policy-box {
+      margin-top: 10px;
+      padding: 12px;
+      border-radius: 14px;
+      background: #2f261d;
+      color: #fffaf0;
+      font-size: 13px;
+      line-height: 1.6;
+      max-height: 260px;
+      overflow-y: auto;
+    }
+
+    .policy-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 6px 0;
+      border-bottom: 1px solid rgba(255, 250, 240, 0.16);
+    }
+
+    .policy-row:last-child {
+      border-bottom: none;
+    }
+
+    .policy-move-id {
+      font-weight: 800;
+    }
+
+    .policy-score {
+      color: #facc15;
+      font-variant-numeric: tabular-nums;
+    }
+
     .piece {
       width: 72%;
       height: 82%;
@@ -365,12 +398,17 @@
       <h2 class="status-title">状況</h2>
       <div id="status" class="status-box">駒をクリックして選択してください。</div>
 
+      <h2 class="status-title">候補手AI</h2>
+      <div id="policyCandidates" class="policy-box">
+        まだ候補手はありません。
+      </div>
+
       <div class="buttons">
         <button class="main-button" type="button" onclick="resetGame()">初期配置に戻す</button>
         <button class="main-button" type="button" onclick="clearSelection()">選択を解除</button>
         <button class="main-button" type="button" onclick="sendBoardToPython()">Pythonへ盤面送信</button>
       </div>
-      
+
     </aside>
   </main>
 
@@ -559,6 +597,7 @@
 
       const data = await res.json();
       legalMovesCache = data.moves || [];
+      updatePolicyCandidatesUI(data.policyCandidates || []);
       return legalMovesCache;
     }
 
@@ -670,12 +709,35 @@
         return;
       }
 
+      updatePolicyCandidatesUI(data.policyCandidates || []);
+
       applyAiMove(data.move);
 
       updateEvaluationUI({
         ...data,
         mode: "DRAMA MODE"
       });
+    }
+
+    function updatePolicyCandidatesUI(candidates) {
+      const element = document.getElementById("policyCandidates");
+      if (!element) return;
+
+      if (!candidates || candidates.length === 0) {
+        element.textContent = "候補手はありません。";
+        return;
+      }
+
+      element.innerHTML = candidates.map((item, index) => {
+        return `
+          <div class="policy-row">
+            <span class="policy-move-id">
+              ${index + 1}. ${item.moveText || item.moveId}
+            </span>
+            <span class="policy-score">${item.policyScore}</span>
+          </div>
+        `;
+      }).join("");
     }
 
     async function handleNoLegalMoves(owner) {

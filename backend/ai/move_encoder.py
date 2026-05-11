@@ -181,3 +181,53 @@ def move_to_dict_with_id(move: Move) -> dict:
     data = move.to_dict()
     data["moveId"] = move_to_id(move)
     return data
+
+JAPANESE_FILES = "９８７６５４３２１"
+JAPANESE_RANKS = "一二三四五六七八九"
+
+PIECE_LABELS = {
+    "P": "歩",
+    "L": "香",
+    "N": "桂",
+    "S": "銀",
+    "G": "金",
+    "B": "角",
+    "R": "飛",
+    "K": "王",
+    "+P": "と",
+    "+L": "成香",
+    "+N": "成桂",
+    "+S": "成銀",
+    "+B": "馬",
+    "+R": "龍",
+}
+
+
+def square_to_japanese(row: int, col: int) -> str:
+    if not (0 <= row < BOARD_SIZE and 0 <= col < BOARD_SIZE):
+        raise MoveEncodeError(f"盤外の座標です: row={row}, col={col}")
+
+    return f"{JAPANESE_FILES[col]}{JAPANESE_RANKS[row]}"
+
+
+def move_to_readable(move: Move) -> str:
+    piece_name = PIECE_LABELS.get(move.piece, move.piece)
+    to_sq = square_to_japanese(move.to_row, move.to_col)
+
+    if move.drop:
+        return f"{piece_name}を{to_sq}に打つ"
+
+    if move.from_row is None or move.from_col is None:
+        return f"{piece_name}を{to_sq}へ"
+
+    from_sq = square_to_japanese(move.from_row, move.from_col)
+    promote_text = " 成る" if move.promote else ""
+
+    return f"{piece_name}：{from_sq} → {to_sq}{promote_text}"
+
+
+def move_to_dict_with_id(move: Move) -> dict:
+    data = move.to_dict()
+    data["moveId"] = move_to_id(move)
+    data["moveText"] = move_to_readable(move)
+    return data
