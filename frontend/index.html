@@ -50,6 +50,86 @@
       line-height: 1.7;
     }
 
+    .evaluation-panel {
+      margin: 16px 0 20px;
+      padding: 16px;
+      border-radius: 18px;
+      background: #2f261d;
+      color: #fffaf0;
+      box-shadow: 0 12px 28px rgba(47, 38, 29, 0.22);
+    }
+
+    .evaluation-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: #d8c6aa;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+    }
+
+    .evaluation-score {
+      margin: 10px 0;
+      text-align: center;
+      font-size: 42px;
+      font-weight: 900;
+      line-height: 1;
+    }
+
+    .evaluation-score.plus {
+      color: #7dd3fc;
+    }
+
+    .evaluation-score.minus {
+      color: #fca5a5;
+    }
+
+    .evaluation-score.zero {
+      color: #fffaf0;
+    }
+
+    .win-rate-wrap {
+      display: grid;
+      gap: 8px;
+    }
+
+    .win-rate-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+
+      font-size: 14px;
+      color: #f4e6cf;
+    }
+
+    .player-side {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .ai-side {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .win-rate-bar {
+      width: 100%;
+      height: 14px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #7dd3fc;
+      border: 1px solid rgba(255, 250, 240, 0.25);
+    }
+
+    .player-win-rate-bar {
+      height: 100%;
+      background: #fca5a5;
+      transition: width 0.25s ease;
+    }
+
     .hands {
       display: flex;
       justify-content: space-between;
@@ -222,6 +302,38 @@
       <h1 class="title">将棋AI 盤面UI</h1>
       <p class="lead">このHTMLは、盤面表示・駒の移動・持ち駒・成り・最低限の反則チェックだけを担当します。</p>
 
+      <div class="evaluation-panel">
+        <div class="evaluation-top">
+          <span>AI評価値</span>
+          <span id="evalMode">DRAMA MODE</span>
+        </div>
+
+        <div id="evalScore" class="evaluation-score">0</div>
+
+        <div class="win-rate-wrap">
+
+          <div class="win-rate-header">
+            <div class="player-side">
+              <span>プレイヤー</span>
+              <span id="playerWinRate">50%</span>
+            </div>
+
+            <div class="ai-side">
+              <span>AI</span>
+              <span id="aiWinRate">50%</span>
+            </div>
+          </div>
+
+          <div class="win-rate-bar">
+            <div
+              id="playerWinRateBar"
+              class="player-win-rate-bar"
+              style="width: 50%;"
+            ></div>
+          </div>
+
+        </div>
+      </div>
       <div class="hands">
         <div class="hand-box">
           <div class="hand-title">後手の持ち駒</div>
@@ -554,6 +666,11 @@
       }
 
       applyAiMove(data.move);
+
+      updateEvaluationUI({
+        ...data,
+        mode: "DRAMA MODE"
+      });
     }
 
     async function handleNoLegalMoves(owner) {
@@ -890,6 +1007,7 @@
 
       switchTurn();
       renderBoard();
+      await refreshEvaluation();
 
       const ended = await checkGameEndOrContinue();
       if (ended) return;
@@ -956,6 +1074,7 @@
 
       switchTurn();
       renderBoard();
+      await refreshEvaluation();
 
       const ended = await checkGameEndOrContinue();
       if (ended) return;
@@ -1087,6 +1206,63 @@
         enemyHand,
         turn
       };
+    }
+
+    function updateEvaluationUI(data) {
+      const evalScoreElement = document.getElementById("evalScore");
+      const aiWinRateElement = document.getElementById("aiWinRate");
+      const playerWinRateElement = document.getElementById("playerWinRate");
+      const playerWinRateBarElement = document.getElementById("playerWinRateBar");
+      const evalModeElement = document.getElementById("evalMode");
+
+      if (!evalScoreElement) return;
+
+      const score = Number(data.score ?? 0);
+      const aiWinRate = Number(data.aiWinRate ?? 50);
+      const playerWinRate = Number(data.playerWinRate ?? (100 - aiWinRate));
+
+      if (score > 0) {
+        evalScoreElement.textContent = `+${score}`;
+        evalScoreElement.className = "evaluation-score plus";
+      } else if (score < 0) {
+        evalScoreElement.textContent = `${score}`;
+        evalScoreElement.className = "evaluation-score minus";
+      } else {
+        evalScoreElement.textContent = "0";
+        evalScoreElement.className = "evaluation-score zero";
+      }
+
+      aiWinRateElement.textContent = `${aiWinRate}%`;
+      playerWinRateElement.textContent = `${playerWinRate}%`;
+      playerWinRateBarElement.style.width = `${playerWinRate}%`;
+
+      evalModeElement.textContent = data.mode || "CURRENT POSITION";
+    }
+
+    async function refreshEvaluation() {
+      try {
+        const response = await fetch("http://127.0.0.1:8000/api/evaluate", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(getGameState())
+        });
+
+        if (!response.ok) {
+          console.error("評価値APIエラー:", response.status);
+          return;
+        }
+
+        const data = await response.json();
+
+        updateEvaluationUI({
+          ...data,
+          mode: "CURRENT POSITION"
+        });
+      } catch (error) {
+        console.error("評価値取得エラー:", error);
+      }
     }
 
     async function sendBoardToPython() {
