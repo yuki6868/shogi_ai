@@ -95,17 +95,12 @@ def select_balance_move(
     target_score: int = 0,
 ) -> dict[str, Any]:
     """
-    教育用AIの本命ロジック。
+    教育用せめぎ合いAI
 
-    目的:
-        最善手を選ぶのではなく、
-        評価値を target_score、基本は 0 に近づける。
-
-    例:
-        current_score = -1000
-        score = -800  悪い
-        score = 0     良い
-        score = +1000 強すぎる
+    方針:
+    - 最善手から少し弱い手を選ぶ
+    - ただし自滅手は絶対避ける
+    - 相手にチャンスを残す
     """
 
     if not evaluated_moves:
@@ -113,34 +108,92 @@ def select_balance_move(
 
     player_level = max(0.0, min(1.0, float(player_level)))
 
-    current_distance = abs(current_score - target_score)
+    # 最善応手後の最高評価値
+    best_reply_score = max(
+        int(item["score"])
+        for item in evaluated_moves
+    )
 
-    def key(item: dict[str, Any]) -> float:
-        score = int(item["score"])
-        next_distance = abs(score - target_score)
+    # 最善との差
+    # 初心者相手でも致命的悪手は禁止
+    allowed_loss = int(700 - 350 * player_level)
+    allowed_loss = max(250, allowed_loss)
 
-        # 0に近づいた量
-        improvement = current_distance - next_distance
+    safe_moves = [
+        item
+        for item in evaluated_moves
+        if best_reply_score - int(item["score"]) <= allowed_loss
+    ]
 
-        # 1000負け → 0 は高評価
-        # 1000負け → 1000勝ちは、0から遠いので評価を下げる
-        balance = -next_distance
+    if not safe_moves:
+        safe_moves = evaluated_moves[:]
 
-        # ただし少しは自然な手・探索信頼度も見る
-        policy = float(item.get("policyScoreRaw", 0.0))
-        visit = float(item.get("visitCount", 0.0))
+    # 0ではなく「少しAI有利」を狙う
+    ideal_score = int(250 + 650 * player_level)
+
+    # AIが負けている時は立て直し優先
+    if current_score < -300:
+        ideal_score = max(
+            ideal_score,
+            current_score + 700,
+        )
+
+    def evaluate(item: dict[str, Any]) -> float:
+
+        # 相手最善応手後
+        reply_score = int(item["score"])
+
+        # AIが1手指した直後
+        raw_score = int(
+            item.get("rawScore", reply_score)
+        )
+
+        # 一瞬良いけど次で崩壊する量
+        collapse = max(
+            0,
+            raw_score - reply_score,
+        )
+
+        # 現在より悪化
+        worsen = max(
+            0,
+            current_score - reply_score,
+        )
+
+        # 目標への近さ
+        closeness = -abs(
+            reply_score - ideal_score
+        )
+
+        # 強さ
+        strength = reply_score
+
+        # MCTS探索量
+        visit = float(
+            item.get("visitCount", 0)
+        )
+
+        # policy自然さ
+        policy = float(
+            item.get("policyScoreRaw", 0.0)
+        )
 
         noise = random.uniform(-0.01, 0.01)
 
         return (
-            improvement * 3.0
-            + balance * 1.5
+            strength * 2.0
+            + closeness * 0.35
+            - collapse * 1.8
+            - worsen * 3.0
+            + visit * 0.02
             + policy * 0.2
-            + visit * 0.01
             + noise
         )
 
-    return max(evaluated_moves, key=key)
+    return max(
+        safe_moves,
+        key=evaluate,
+    )
 
 def select_drama_move(
     evaluated_moves: list[dict[str, Any]],

@@ -203,8 +203,9 @@ def ai_move_mcts(req: AiMoveRequest):
             "move": None,
         }
 
-    current_score = evaluate_board(shogi, ai_owner="enemy")
+    current_score = evaluate_board(shogi, ai_owner=req.turn)
 
+    # MCTSの深さ探索結果をそのまま使う
     evaluated = run_mcts(
         shogi=shogi,
         root_owner=req.turn,
@@ -219,25 +220,31 @@ def ai_move_mcts(req: AiMoveRequest):
             "move": None,
         }
 
-    selected = select_balance_move(
+    selected = select_mcts_education_move(
         evaluated_moves=evaluated,
-        current_score=current_score,
+        target_win_rate=60.0,
         player_level=req.playerLevel,
-        target_score=0,
     )
 
-    display_score = selected.get("rawScore", selected["score"])
+    # 中央表示もMCTS探索後の評価値にする
+    display_score = int(selected.get("searchScore", selected["score"]))
     display_win_rate = score_to_win_rate(display_score)
 
     candidates = [
         {
             "moveId": move_to_id(item["move"]),
             "moveText": move_to_dict_with_id(item["move"]).get("moveText", ""),
-            "score": item["score"],
-            "rawScore": item.get("rawScore", item["score"]),
-            "winRate": item["winRate"],
+
+            # MCTS深さ探索後の評価
+            "score": item.get("searchScore", item["score"]),
             "searchScore": item.get("searchScore", item["score"]),
             "searchWinRate": item.get("searchWinRate", item["winRate"]),
+
+            # AIが1手指した直後の評価
+            "rawScore": item.get("rawScore", item["score"]),
+            "rawWinRate": item.get("rawWinRate", item["winRate"]),
+
+            "winRate": item["winRate"],
             "visitCount": item.get("visitCount", 0),
             "qValue": item.get("qValue", 0.0),
             "prior": item.get("prior", 0.0),
@@ -247,8 +254,8 @@ def ai_move_mcts(req: AiMoveRequest):
 
     return {
         "ok": True,
-        "mode": "LIGHT MCTS + POLICY + VALUE + EDUCATION CONTROL",
-        "selectedBy": "mcts_education_target_55",
+        "mode": "MCTS DEPTH SEARCH + EDUCATION CONTROL",
+        "selectedBy": "mcts_education_move",
         "playerLevel": round(req.playerLevel, 3),
         "valueAvailable": get_value_inference().available,
 
@@ -257,12 +264,12 @@ def ai_move_mcts(req: AiMoveRequest):
 
         "currentScore": current_score,
 
-        # 画面表示用：AIが1手指した直後の評価値
+        # 表示用：MCTS深さ探索後の評価値
         "score": display_score,
-        "rawScore": display_score,
+        "searchScore": display_score,
 
-        # MCTS探索スコアは別名で返す
-        "searchScore": selected.get("searchScore", selected["score"]),
+        # 参考：AIが1手指した直後
+        "rawScore": selected.get("rawScore", display_score),
 
         "aiWinRate": display_win_rate,
         "playerWinRate": round(100 - display_win_rate, 1),
@@ -275,10 +282,7 @@ def ai_move_mcts(req: AiMoveRequest):
         "qValue": selected.get("qValue", 0.0),
         "prior": selected.get("prior", 0.0),
 
-        # フロントが見ている名前に合わせる
         "policyCandidates": candidates,
-
-        # デバッグ用に残す
         "mctsCandidates": candidates,
     }
 

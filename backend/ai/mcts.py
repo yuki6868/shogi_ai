@@ -15,9 +15,15 @@ from ai.policy_inference import get_policy_inference
 from ai.value_inference import get_value_inference
 
 
-MCTS_SIMULATIONS = 50
-MCTS_DEPTH_LIMIT = 20
-MAX_CANDIDATES = 8
+# 探索回数
+# 50だと将棋では浅すぎる
+MCTS_SIMULATIONS = 300
+
+# 深さは浅めにして幅を広げる
+MCTS_DEPTH_LIMIT = 8
+
+# 候補手を少し増やす
+MAX_CANDIDATES = 80
 CPUCT = 1.5
 VALUE_SCALE = 1200.0
 
@@ -76,39 +82,137 @@ def _softmax_priors(policy_items: list[dict], legal_moves: list[Move]) -> list[t
         for item, exp_value in zip(policy_items, exp_values)
     ]
 
+TACTICAL_CANDIDATE_LIMIT = 80
 
-def _rank_candidates(board: ShogiBoard, legal_moves: list[Move], limit: int) -> list[tuple[Move, float]]:
+TACTICAL_VALUES = {
+    "P": 100,
+    "L": 300,
+    "N": 300,
+    "S": 500,
+    "G": 600,
+    "B": 800,
+    "R": 1000,
+    "K": 10000,
+    "+P": 600,
+    "+L": 600,
+    "+N": 600,
+    "+S": 600,
+    "+B": 1100,
+    "+R": 1300,
+}
+
+
+def _tactical_score(
+    board: ShogiBoard,
+    move: Move,
+    owner: str,
+) -> float:
+    score = 0.0
+
+    # 駒取り
+    captured = board.board[move.to_row][move.to_col]
+    if captured is not None and captured["owner"] != owner:
+        score += TACTICAL_VALUES.get(captured["type"], 0) * 5.0
+
+    # 成り
+    if move.promote:
+        score += 400.0
+
+    # 1手指した直後の評価
+    copied = board.clone()
+    copied.turn = owner
+
+    try:
+        copied.apply_move(move)
+
+        one_ply_score = evaluate_board(
+            copied,
+            ai_owner=owner,
+        )
+
+        score += one_ply_score * 0.2
+
+        # 王手
+        if copied.is_in_check(copied.enemy_of(owner)):
+            score += 3000.0
+
+    except Exception:
+        score -= 999999.0
+
+    return score
+
+
+def _rank_candidates(
+    board: ShogiBoard,
+    legal_moves: list[Move],
+    limit: int,
+) -> list[tuple[Move, float]]:
     if not legal_moves:
         return []
 
+    owner = board.turn
+
+    scored: list[dict] = []
+
+    # まず全合法手を戦術評価する
+    for move in legal_moves:
+        move_id = move_to_id(move)
+
+        scored.append(
+            {
+                "move": move,
+                "moveId": move_id,
+                "score": _tactical_score(
+                    board,
+                    move,
+                    owner,
+                ),
+            }
+        )
+
+    # policy AI は補助点として足す
     policy = get_policy_inference()
 
     if policy.available:
-        ranked = policy.rank_legal_moves(
-            shogi=board,
-            legal_moves=legal_moves,
-            top_k=limit,
-        )
-        priors = _softmax_priors(ranked, legal_moves)
-        if priors:
-            return priors
+        try:
+            ranked = policy.rank_legal_moves(
+                shogi=board,
+                legal_moves=legal_moves,
+                top_k=len(legal_moves),
+            )
 
-    candidates = filter_policy_candidates(
-        board,
-        legal_moves,
-        owner=board.turn,
-        top_k=limit,
+            policy_score_map = {
+                item["moveId"]: float(item["policyScore"])
+                for item in ranked
+            }
+
+            for item in scored:
+                item["score"] += policy_score_map.get(
+                    item["moveId"],
+                    0.0,
+                ) * 120.0
+
+        except Exception as e:
+            print("[MCTS] policy ranking failed:", e)
+
+    scored.sort(
+        key=lambda item: item["score"],
+        reverse=True,
     )
 
-    if not candidates:
-        candidates = legal_moves[:limit]
+    selected = scored[:max(limit, TACTICAL_CANDIDATE_LIMIT)]
 
-    weights = [float(len(candidates) - i) for i in range(len(candidates))]
-    total = sum(weights) or 1.0
+    total = sum(
+        max(abs(item["score"]), 1.0)
+        for item in selected
+    ) or 1.0
 
     return [
-        (move, weight / total)
-        for move, weight in zip(candidates, weights)
+        (
+            item["move"],
+            max(item["score"], 1.0) / total,
+        )
+        for item in selected
     ]
 
 
@@ -226,14 +330,16 @@ def run_mcts(
             {
                 "move": child.move,
 
-                # 教育制御・画面表示用
-                "score": raw_score,
-                "rawScore": raw_score,
-                "winRate": score_to_win_rate(raw_score),
-
-                # MCTS内部探索結果
+                # MCTSの深さ探索結果
+                # 最終選択ではこれを使う
+                "score": search_score,
                 "searchScore": search_score,
+                "winRate": score_to_win_rate(search_score),
                 "searchWinRate": score_to_win_rate(search_score),
+
+                # AIが1手指した直後の表示用
+                "rawScore": raw_score,
+                "rawWinRate": score_to_win_rate(raw_score),
 
                 "visitCount": child.visit_count,
                 "qValue": round(q, 4),
