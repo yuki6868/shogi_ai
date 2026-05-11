@@ -9,6 +9,7 @@ import torch
 
 from ai.board import ShogiBoard
 from ai.board_tensor import board_to_full_tensor
+from ai.kifu_parser import create_initial_board
 from ai.path_config import WORKSPACE_DIR
 from ai.value_model import create_value_model
 
@@ -22,6 +23,9 @@ class ValueInference:
         self.device = self._get_device()
         self.model = None
         self.available = False
+
+        # 初期局面の偏り補正
+        self.initial_logit_bias = 0.0
 
         self._load()
 
@@ -48,43 +52,70 @@ class ValueInference:
             self.model = model
             self.available = True
 
+            self.initial_logit_bias = self._calculate_initial_logit_bias()
+
             print(f"[VALUE] loaded: {self.model_path} / device={self.device}")
+            print(f"[VALUE] initial_logit_bias = {self.initial_logit_bias:.4f}")
 
         except Exception as e:
             print(f"[VALUE] load failed: {e}")
             self.model = None
             self.available = False
+            self.initial_logit_bias = 0.0
 
     @torch.no_grad()
-    def predict_enemy_win_rate(self, shogi: ShogiBoard) -> float:
-        """
-        後手(enemy)の勝率を 0.0〜100.0 で返す。
-        """
+    def _predict_raw_logit(self, shogi: ShogiBoard) -> float:
         if not self.available or self.model is None:
             raise RuntimeError("value_model.pt が読み込まれていません。")
 
         x = board_to_full_tensor(shogi).unsqueeze(0).to(self.device)
-
         logits = self.model(x)
-        prob = torch.sigmoid(logits)[0].item()
+
+        return float(logits[0].item())
+
+    @torch.no_grad()
+    def _calculate_initial_logit_bias(self) -> float:
+        """
+        初期局面は本来ほぼ互角なので、
+        value_model.pt が初期局面に出す偏りを補正値として保存する。
+        """
+        if self.model is None:
+            return 0.0
+
+        initial_board = create_initial_board()
+        initial_board.turn = "player"
+
+        x = board_to_full_tensor(initial_board).unsqueeze(0).to(self.device)
+        logits = self.model(x)
+
+        return float(logits[0].item())
+
+    def predict_enemy_win_rate(self, shogi: ShogiBoard) -> float:
+        """
+        後手(enemy)の勝率を 0.0〜100.0 で返す。
+        初期局面の偏りを補正する。
+        """
+        raw_logit = self._predict_raw_logit(shogi)
+
+        # ここが重要：初期局面の偏りを引く
+        calibrated_logit = raw_logit - self.initial_logit_bias
+
+        prob = 1.0 / (1.0 + math.exp(-calibrated_logit))
 
         return round(prob * 100, 1)
 
-    @torch.no_grad()
     def evaluate_score(self, shogi: ShogiBoard, ai_owner: str = "enemy") -> int:
         """
-        既存 evaluator.py と合わせるために、
-        勝率を評価値っぽいスコアへ変換する。
-
         + なら ai_owner 有利
         - なら ai_owner 不利
         """
-        enemy_win_rate = self.predict_enemy_win_rate(shogi)
-        p_enemy = enemy_win_rate / 100
+        raw_logit = self._predict_raw_logit(shogi)
 
-        p_enemy = min(max(p_enemy, 0.001), 0.999)
+        # 初期局面が0になるように補正
+        calibrated_logit = raw_logit - self.initial_logit_bias
 
-        score = int(600 * math.log(p_enemy / (1 - p_enemy)))
+        # logitをそのまま評価値スケールへ変換
+        score = int(600 * calibrated_logit)
 
         if ai_owner == "enemy":
             return score

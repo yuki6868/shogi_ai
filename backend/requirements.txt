@@ -3,3 +3,4 @@ uvicorn
 pydantic
 py7zr
 torch
+tqdm
