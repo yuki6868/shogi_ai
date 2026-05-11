@@ -16,6 +16,12 @@ from ai.policy_dummy import (
     policy_candidates_to_dicts,
 )
 
+from ai.policy_inference import (
+    get_policy_inference,
+    filter_policy_ai_candidates,
+    policy_ai_candidates_to_dicts,
+)
+
 
 class AiMoveRequest(BaseModel):
     board: list
@@ -84,12 +90,30 @@ def ai_move(req: AiMoveRequest):
 
     current_score = evaluate_board(shogi, ai_owner="enemy")
 
-    policy_moves = filter_policy_candidates(
-        shogi,
-        moves,
-        owner=req.turn,
-        top_k=12,
-    )
+    policy = get_policy_inference()
+
+    if policy.available:
+        policy_moves = filter_policy_ai_candidates(
+            shogi=shogi,
+            legal_moves=moves,
+            top_k=12,
+        )
+        policy_candidates = policy_ai_candidates_to_dicts(
+            shogi=shogi,
+            legal_moves=moves,
+            limit=12,
+        )
+        policy_mode = "POLICY AI"
+    else:
+        policy_moves = filter_policy_candidates(
+            shogi,
+            moves,
+            owner=req.turn,
+            top_k=12,
+        )
+        ranked = rank_natural_moves(shogi, moves, req.turn)
+        policy_candidates = policy_candidates_to_dicts(ranked, limit=12)
+        policy_mode = "POLICY DUMMY"
 
     evaluated = evaluate_moves(
         shogi,
@@ -103,11 +127,9 @@ def ai_move(req: AiMoveRequest):
         current_score=current_score,
     )
 
-    ranked = rank_natural_moves(shogi, moves, req.turn)
-
     return {
         "ok": True,
-        "mode": "DRAMA THINK",
+        "mode": f"DRAMA THINK + {policy_mode}",
         "moveId": move_to_id(selected["move"]),
         "move": move_to_dict_with_id(selected["move"]),
         "currentScore": current_score,
@@ -117,8 +139,7 @@ def ai_move(req: AiMoveRequest):
         "playerWinRate": round(100 - selected["winRate"], 1),
         "legalMoveCount": len(moves),
         "policyMoveCount": len(policy_moves),
-        "policyCandidates": policy_candidates_to_dicts(ranked, limit=12),
-        "policyMoveCount": len(policy_moves),
+        "policyCandidates": policy_candidates,
     }
 
 
@@ -163,4 +184,15 @@ def check_state(req: AiMoveRequest):
         "ok": True,
         "turn": req.turn,
         "inCheck": shogi.is_in_check(req.turn),
+    }
+
+@app.get("/api/policy-status")
+def policy_status():
+    policy = get_policy_inference()
+
+    return {
+        "ok": True,
+        "available": policy.available,
+        "modelPath": str(policy.model_path),
+        "device": str(policy.device),
     }
