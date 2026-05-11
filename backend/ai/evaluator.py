@@ -33,14 +33,6 @@ def owner_sign(owner: str, ai_owner: str = "enemy") -> int:
 
 
 def evaluate_board(shogi: ShogiBoard, ai_owner: str = "enemy") -> int:
-    """
-    評価値を返す。
-    value_model.pt がある場合:
-        評価関数AIを使う。
-
-    value_model.pt がない場合:
-        今までの簡易評価関数を使う。
-    """
     value_ai = get_value_inference()
 
     if value_ai.available:
@@ -58,8 +50,14 @@ def evaluate_board(shogi: ShogiBoard, ai_owner: str = "enemy") -> int:
             owner = piece["owner"]
 
             value = PIECE_VALUES.get(piece_type, 0)
+
             score += owner_sign(owner, ai_owner) * value
-            score += owner_sign(owner, ai_owner) * position_bonus(owner, piece_type, r, c)
+            score += owner_sign(owner, ai_owner) * position_bonus(
+                owner,
+                piece_type,
+                r,
+                c,
+            )
 
     for piece in shogi.enemy_hand:
         score += int(PIECE_VALUES.get(piece, 0) * 0.9)

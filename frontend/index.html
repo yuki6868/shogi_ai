@@ -443,6 +443,9 @@
     let enemyHand = [];
     let legalMovesCache = [];
 
+    let playerLevel = 0.35;
+    let currentEvalScore = 0;
+
     function player(type) {
       return { type, owner: "player", promoted: false };
     }
@@ -689,7 +692,8 @@
         board: board,
         playerHand: playerHand,
         enemyHand: enemyHand,
-        turn: turn
+        turn: turn,
+        playerLevel: playerLevel
       };
 
       console.log("AIへ送信:", payload);
@@ -942,7 +946,7 @@
       }
       return moves;
     }
-    
+
     function renderHands() {
       renderHand("player", playerHand, document.getElementById("playerHand"));
       renderHand("enemy", enemyHand, document.getElementById("enemyHand"));
@@ -1076,6 +1080,8 @@
         return;
       }
 
+      const beforeScore = currentEvalScore;
+
       movePiece(selected.row, selected.col, row, col, legalMove.promote);
 
       selected = null;
@@ -1084,6 +1090,8 @@
       switchTurn();
       renderBoard();
       await refreshEvaluation();
+
+      updatePlayerLevelByMove(beforeScore, currentEvalScore);
 
       const ended = await checkGameEndOrContinue();
       if (ended) return;
@@ -1122,6 +1130,8 @@
     }
 
     async function handleDropPiece(row, col) {
+      const beforeScore = currentEvalScore;
+
       const legalMove = findLegalMoveForSelected(row, col);
 
       if (!legalMove) {
@@ -1151,6 +1161,8 @@
       switchTurn();
       renderBoard();
       await refreshEvaluation();
+
+      updatePlayerLevelByMove(beforeScore, currentEvalScore);
 
       const ended = await checkGameEndOrContinue();
       if (ended) return;
@@ -1271,8 +1283,11 @@
       selectedHandPiece = null;
       playerHand = [];
       enemyHand = [];
+      playerLevel = 0.35;
+      currentEvalScore = 0;
       setStatus("初期配置に戻しました。先手の番です。");
       renderBoard();
+      refreshEvaluation();
     }
 
     function getGameState() {
@@ -1280,10 +1295,10 @@
         board,
         playerHand,
         enemyHand,
-        turn
+        turn,
+        playerLevel
       };
     }
-
     async function fetchPolicyStatus() {
       try {
         const res = await fetch("http://127.0.0.1:8000/api/policy-status");
@@ -1320,6 +1335,7 @@
       if (!evalScoreElement) return;
 
       const score = Number(data.score ?? 0);
+      currentEvalScore = score;
       const aiWinRate = Number(data.aiWinRate ?? 50);
       const playerWinRate = Number(data.playerWinRate ?? (100 - aiWinRate));
 
@@ -1339,6 +1355,28 @@
       playerWinRateBarElement.style.width = `${playerWinRate}%`;
 
       evalModeElement.textContent = data.mode || "CURRENT POSITION";
+    }
+
+    function updatePlayerLevelByMove(beforeScore, afterScore) {
+      const improvement = beforeScore - afterScore;
+
+      if (improvement >= 500) {
+        playerLevel += 0.08;
+      } else if (improvement >= 250) {
+        playerLevel += 0.05;
+      } else if (improvement >= 100) {
+        playerLevel += 0.025;
+      } else if (improvement <= -500) {
+        playerLevel -= 0.08;
+      } else if (improvement <= -250) {
+        playerLevel -= 0.05;
+      } else if (improvement <= -100) {
+        playerLevel -= 0.025;
+      }
+
+      playerLevel = Math.max(0.05, Math.min(1.0, playerLevel));
+
+      console.log("playerLevel:", playerLevel, "improvement:", improvement);
     }
 
     async function refreshEvaluation() {

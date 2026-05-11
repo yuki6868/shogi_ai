@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from ai.board import ShogiBoard
 from ai.evaluator import evaluate_board, evaluate_moves, score_to_win_rate
-from ai.move_selector import select_drama_move, select_strong_move
+from ai.move_selector import select_level_adjusted_move, select_strong_move
 from ai.move_encoder import legal_moves_to_ids, move_to_id, move_to_dict_with_id
 from ai.policy_dummy import (
     filter_policy_candidates,
@@ -21,6 +21,7 @@ from ai.policy_inference import (
     filter_policy_ai_candidates,
     policy_ai_candidates_to_dicts,
 )
+from ai.value_inference import get_value_inference
 
 
 class AiMoveRequest(BaseModel):
@@ -28,6 +29,7 @@ class AiMoveRequest(BaseModel):
     playerHand: list | dict = []
     enemyHand: list | dict = []
     turn: str = "enemy"
+    playerLevel: float = 0.35
 
 
 app = FastAPI()
@@ -92,12 +94,21 @@ def ai_move(req: AiMoveRequest):
 
     policy = get_policy_inference()
 
+    policy_score_map = {}
+
     if policy.available:
-        policy_moves = filter_policy_ai_candidates(
+        ranked_policy = policy.rank_legal_moves(
             shogi=shogi,
             legal_moves=moves,
             top_k=12,
         )
+
+        policy_moves = [item["move"] for item in ranked_policy]
+        policy_score_map = {
+            item["moveId"]: float(item["policyScore"])
+            for item in ranked_policy
+        }
+
         policy_candidates = policy_ai_candidates_to_dicts(
             shogi=shogi,
             legal_moves=moves,
@@ -122,14 +133,23 @@ def ai_move(req: AiMoveRequest):
         lookahead=True,
     )
 
-    selected = select_drama_move(
+    for item in evaluated:
+        item["policyScoreRaw"] = policy_score_map.get(
+            move_to_id(item["move"]),
+            0.0,
+        )
+
+    selected = select_level_adjusted_move(
         evaluated,
-        current_score=current_score,
+        player_level=req.playerLevel,
     )
 
     return {
         "ok": True,
-        "mode": f"DRAMA THINK + {policy_mode}",
+        "mode": f"LEVEL ADJUST + {policy_mode}",
+        "valueAvailable": get_value_inference().available,
+        "selectedBy": "level_adjusted_policy_value",
+        "playerLevel": round(req.playerLevel, 3),
         "moveId": move_to_id(selected["move"]),
         "move": move_to_dict_with_id(selected["move"]),
         "currentScore": current_score,
@@ -195,4 +215,15 @@ def policy_status():
         "available": policy.available,
         "modelPath": str(policy.model_path),
         "device": str(policy.device),
+    }
+
+@app.get("/api/value-status")
+def value_status():
+    value_ai = get_value_inference()
+
+    return {
+        "ok": True,
+        "available": value_ai.available,
+        "modelPath": str(value_ai.model_path),
+        "device": str(value_ai.device),
     }
