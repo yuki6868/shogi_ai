@@ -212,50 +212,51 @@ def select_drama_move(
 
 def select_mcts_education_move(
     evaluated_moves: list[dict[str, Any]],
-    target_win_rate: float = 55.0,
+    target_win_rate: float = 60.0,
     player_level: float = 0.35,
 ) -> dict[str, Any]:
     if not evaluated_moves:
         raise ValueError("候補手がありません")
 
     player_level = max(0.0, min(1.0, float(player_level)))
-    target_win_rate = max(50.0, min(70.0, float(target_win_rate)))
+    target_win_rate = max(50.0, min(75.0, float(target_win_rate)))
 
     moves = sorted(
         evaluated_moves,
-        key=lambda item: (item.get("visitCount", 0), item["score"]),
+        key=lambda item: (
+            int(item.get("searchScore", item.get("score", -999999))),
+            int(item.get("rawScore", -999999)),
+        ),
         reverse=True,
     )
 
-    best_score = max(item["score"] for item in moves)
-    max_visit = max(1, max(int(item.get("visitCount", 0)) for item in moves))
+    best_score = int(moves[0].get("searchScore", moves[0].get("score", 0)))
 
-    allowed_loss = int(900 - 500 * player_level)
-    allowed_loss = max(250, allowed_loss)
+    allowed_loss = int(700 - 350 * player_level)
+    allowed_loss = max(180, allowed_loss)
 
     safe_moves = [
-        item for item in moves
-        if best_score - int(item["score"]) <= allowed_loss
+        item
+        for item in moves
+        if best_score - int(item.get("searchScore", item.get("score", 0))) <= allowed_loss
     ]
 
     if not safe_moves:
-        safe_moves = moves[:]
+        safe_moves = moves[:3]
 
     def education_key(item: dict[str, Any]) -> float:
-        win_rate = float(item.get("winRate", 50.0))
-        visit_ratio = float(item.get("visitCount", 0)) / max_visit
-        score = float(item.get("score", 0))
+        score = float(item.get("searchScore", item.get("score", 0)))
+        raw_score = float(item.get("rawScore", score))
+        win_rate = float(item.get("searchWinRate", item.get("winRate", 50.0)))
 
         closeness = -abs(win_rate - target_win_rate)
-        strength = score / 1200.0
-        search_confidence = visit_ratio
-        noise = random.uniform(-0.03, 0.03)
+        strength = score
+        immediate_gain = raw_score * 0.25
 
         return (
-            closeness * (1.25 - 0.45 * player_level)
-            + strength * (0.25 + 0.55 * player_level)
-            + search_confidence * (0.35 + 0.65 * player_level)
-            + noise
+            strength * 1.0
+            + immediate_gain
+            + closeness * (4.0 - 2.5 * player_level)
         )
 
     return max(safe_moves, key=education_key)

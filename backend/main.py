@@ -241,6 +241,15 @@ def ai_move_mcts(req: AiMoveRequest):
         player_level=req.playerLevel,
     )
 
+    # selected = max(
+    #     evaluated,
+    #     key=lambda item: (
+    #         int(item.get("searchScore", item.get("score", -999999))),
+    #         int(item.get("rawScore", -999999)),
+    #         int(item.get("visitCount", 0)),
+    #     ),
+    # )
+
     # 中央表示もMCTS探索後の評価値にする
     display_score = int(selected.get("searchScore", selected["score"]))
     display_win_rate = score_to_win_rate(display_score)

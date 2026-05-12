@@ -14,11 +14,15 @@ from ai.policy_inference import get_policy_inference
 from ai.value_inference import get_value_inference
 
 
-MCTS_SIMULATIONS = 120
-MCTS_DEPTH_LIMIT = 5
+MCTS_SIMULATIONS = 0
+MCTS_DEPTH_LIMIT = 3
 
-MAX_CANDIDATES = 24
-TACTICAL_CANDIDATE_LIMIT = 24
+MAX_CANDIDATES = 14
+TACTICAL_CANDIDATE_LIMIT = 44
+MINIMAX_BRANCH_LIMIT = 6
+
+ROOT_DEEP_SEARCH_LIMIT = 7
+FORCING_MOVE_LIMIT = 8
 
 CPUCT = 1.5
 VALUE_SCALE = 1200.0
@@ -303,20 +307,42 @@ def _tactical_score(
         )
 
         # 1手後評価は補助程度
-        score += one_ply_score * 0.2
+        score += one_ply_score * 0.05
 
         # 王手は強いが、序盤は雑な王手を抑える
         if copied.is_in_check(copied.enemy_of(owner)):
             if _is_opening(board):
-                score += 800.0
+                score += 30.0
             else:
-                score += 3000.0
+                score += 120.0
 
     except Exception:
         score -= 999999.0
 
     return score
 
+
+def _is_forcing_move(board: ShogiBoard, move: Move, owner: str) -> bool:
+    captured = board.board[move.to_row][move.to_col]
+
+    if captured is not None and captured["owner"] != owner:
+        return True
+
+    if move.promote:
+        return True
+
+    copied = board.clone()
+    copied.turn = owner
+
+    try:
+        copied.apply_move(move)
+        enemy = copied.enemy_of(owner)
+        if copied.is_in_check(enemy):
+            return False
+    except Exception:
+        return False
+
+    return False
 
 def _rank_candidates(
     board: ShogiBoard,
@@ -363,7 +389,7 @@ def _rank_candidates(
                 item["score"] += policy_score_map.get(
                     item["moveId"],
                     0.0,
-                ) * 120.0
+                ) * 600.0
 
         except Exception as e:
             print("[MCTS] policy ranking failed:", e)
@@ -373,7 +399,24 @@ def _rank_candidates(
         reverse=True,
     )
 
-    selected = scored[:max(limit, TACTICAL_CANDIDATE_LIMIT)]
+    forcing = [
+        item for item in scored
+        if _is_forcing_move(board, item["move"], owner)
+    ]
+
+    normal = [
+        item for item in scored
+        if item not in forcing
+    ]
+
+    selected = []
+
+    selected.extend(forcing[:FORCING_MOVE_LIMIT])
+
+    for item in normal:
+        if len(selected) >= limit:
+            break
+        selected.append(item)
 
     total = sum(
         max(abs(item["score"]), 1.0)
@@ -456,6 +499,76 @@ def _backpropagate(path: list[MCTSNode], value: float) -> None:
         node.value_sum += value
 
 
+def _minimax_score(
+    board: ShogiBoard,
+    depth: int,
+    alpha: int,
+    beta: int,
+    root_owner: str,
+) -> int:
+    legal_moves = board.generate_legal_moves(board.turn)
+
+    if not legal_moves:
+        if board.turn == root_owner:
+            return -999999
+        return 999999
+
+    if depth <= 0:
+        return evaluate_board(board, ai_owner=root_owner)
+
+    candidates = _rank_candidates(
+        board=board,
+        legal_moves=legal_moves,
+        limit=MINIMAX_BRANCH_LIMIT,
+    )
+
+    if board.turn == root_owner:
+        best = -999999
+
+        for move, _prior in candidates:
+            copied = board.clone()
+            copied.turn = board.turn
+            copied.apply_move(move)
+
+            score = _minimax_score(
+                copied,
+                depth - 1,
+                alpha,
+                beta,
+                root_owner,
+            )
+
+            best = max(best, score)
+            alpha = max(alpha, best)
+
+            if beta <= alpha:
+                break
+
+        return best
+
+    best = 999999
+
+    for move, _prior in candidates:
+        copied = board.clone()
+        copied.turn = board.turn
+        copied.apply_move(move)
+
+        score = _minimax_score(
+            copied,
+            depth - 1,
+            alpha,
+            beta,
+            root_owner,
+        )
+
+        best = min(best, score)
+        beta = min(beta, best)
+
+        if beta <= alpha:
+            break
+
+    return best
+
 def run_mcts(
     shogi: ShogiBoard,
     root_owner: str = "enemy",
@@ -465,55 +578,60 @@ def run_mcts(
     root_board = shogi.clone()
     root_board.turn = root_owner
 
-    root = MCTSNode(board=root_board)
-    _expand(root)
+    legal_moves = root_board.generate_legal_moves(root_owner)
 
-    if not root.children:
+    if not legal_moves:
         return []
 
-    for _ in range(max(1, simulations)):
-        node = root
-        path = [node]
-        depth = 0
-
-        while node.expanded and node.children and depth < depth_limit:
-            node = _select_child(node, root_owner=root_owner)
-            path.append(node)
-            depth += 1
-
-        if depth < depth_limit:
-            terminal = _terminal_value(node.board, root_owner)
-            if terminal is None:
-                _expand(node)
-
-        value = _evaluate(node, root_owner=root_owner)
-        _backpropagate(path, value)
+    root_candidates = _rank_candidates(
+        board=root_board,
+        legal_moves=legal_moves,
+        limit=MAX_CANDIDATES,
+    )
 
     results: list[dict] = []
 
-    for child in root.children.values():
-        q = child.q_value
-        search_score = _value_to_score(q)
+    for index, (move, prior) in enumerate(root_candidates):
+        copied = root_board.clone()
+        copied.turn = root_owner
+        copied.apply_move(move)
 
-        raw_score = evaluate_board(child.board, ai_owner=root_owner)
+        raw_score = evaluate_board(copied, ai_owner=root_owner)
+
+        if index < ROOT_DEEP_SEARCH_LIMIT:
+            search_score = _minimax_score(
+                board=copied,
+                depth=max(1, min(3, depth_limit) - 1),
+                alpha=-999999,
+                beta=999999,
+                root_owner=root_owner,
+            )
+        else:
+            search_score = raw_score
 
         results.append(
             {
-                "move": child.move,
-                "score": search_score,
-                "searchScore": search_score,
-                "winRate": score_to_win_rate(search_score),
-                "searchWinRate": score_to_win_rate(search_score),
-                "rawScore": raw_score,
-                "rawWinRate": score_to_win_rate(raw_score),
-                "visitCount": child.visit_count,
-                "qValue": round(q, 4),
-                "prior": round(child.prior, 4),
+                "move": move,
+                "score": int(search_score),
+                "searchScore": int(search_score),
+                "winRate": score_to_win_rate(int(search_score)),
+                "searchWinRate": score_to_win_rate(int(search_score)),
+
+                "rawScore": int(raw_score),
+                "rawWinRate": score_to_win_rate(int(raw_score)),
+
+                "visitCount": max(1, len(root_candidates) - index),
+                "qValue": round(_score_to_value(int(search_score)), 4),
+                "prior": round(float(prior), 4),
             }
         )
 
     results.sort(
-        key=lambda item: (item["visitCount"], item["score"]),
+        key=lambda item: (
+            int(item["searchScore"]),
+            int(item["rawScore"]),
+            int(item["visitCount"]),
+        ),
         reverse=True,
     )
 
