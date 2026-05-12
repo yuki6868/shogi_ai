@@ -223,17 +223,20 @@
       background: rgba(255, 255, 255, 0.18);
     }
 
-    .cell.last-move-from {
+    .cell.last-move-from.effect-standard,
+    .cell.last-move-from.effect-fancy {
       background: rgba(59, 130, 246, 0.28);
       box-shadow: inset 0 0 0 4px rgba(37, 99, 235, 0.65);
     }
 
-    .cell.last-move-to {
+    .cell.last-move-to.effect-standard,
+    .cell.last-move-to.effect-fancy {
       background: rgba(250, 204, 21, 0.45);
       box-shadow: inset 0 0 0 4px rgba(202, 138, 4, 0.75);
     }
 
-    .cell.last-move-to::after {
+    .cell.last-move-to.effect-standard::after,
+    .cell.last-move-to.effect-fancy::after {
       content: "着";
       position: absolute;
       right: 4px;
@@ -246,12 +249,14 @@
       padding: 1px 5px;
     }
 
-    .cell.last-move-drop {
+    .cell.last-move-drop.effect-standard,
+    .cell.last-move-drop.effect-fancy {
       background: rgba(34, 197, 94, 0.30);
       box-shadow: inset 0 0 0 4px rgba(22, 163, 74, 0.70);
     }
 
-    .cell.last-move-drop::after {
+    .cell.last-move-drop.effect-standard::after,
+    .cell.last-move-drop.effect-fancy::after {
       content: "打";
       position: absolute;
       right: 4px;
@@ -262,6 +267,34 @@
       background: rgba(255, 255, 255, 0.86);
       border-radius: 999px;
       padding: 1px 5px;
+    }
+
+    .cell.effect-fancy.last-move-from,
+    .cell.effect-fancy.last-move-to,
+    .cell.effect-fancy.last-move-drop {
+      animation: moveFlash 0.75s ease-out 0s 2;
+    }
+
+    .cell.effect-fancy.last-move-to::before,
+    .cell.effect-fancy.last-move-drop::before {
+      content: "";
+      position: absolute;
+      inset: 8px;
+      border-radius: 999px;
+      border: 3px solid rgba(255, 255, 255, 0.9);
+      animation: moveRing 0.85s ease-out 0s 2;
+      pointer-events: none;
+    }
+
+    @keyframes moveFlash {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.04); }
+      100% { transform: scale(1); }
+    }
+
+    @keyframes moveRing {
+      0% { opacity: 0.95; transform: scale(0.65); }
+      100% { opacity: 0; transform: scale(1.45); }
     }
 
     .policy-box {
@@ -443,6 +476,51 @@
       line-height: 1.7;
     }
 
+
+    .promotion-panel {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      background: rgba(0, 0, 0, 0.38);
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .promotion-panel.open {
+      display: flex;
+    }
+
+    .promotion-dialog {
+      width: min(360px, 100%);
+      padding: 22px;
+      border-radius: 20px;
+      background: #fffaf0;
+      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
+      text-align: center;
+      border: 2px solid rgba(75, 53, 33, 0.22);
+    }
+
+    .promotion-title {
+      margin: 0 0 14px;
+      font-size: 20px;
+      font-weight: 900;
+      color: #3d2b1c;
+    }
+
+    .promotion-buttons {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .start-button {
+      width: 100%;
+      margin: 0 0 14px;
+      background: #7c2d12 !important;
+    }
+
     @media (max-width: 900px) {
       body {
         align-items: start;
@@ -475,7 +553,6 @@
         <div id="evalScore" class="evaluation-score">0</div>
 
         <div class="win-rate-wrap">
-
           <div class="win-rate-header">
             <div class="player-side">
               <span>プレイヤー</span>
@@ -495,9 +572,9 @@
               style="width: 50%;"
             ></div>
           </div>
-
         </div>
       </div>
+
       <div class="hands">
         <div class="hand-box">
           <div class="hand-title">後手の持ち駒</div>
@@ -523,35 +600,46 @@
       </div>
     </section>
 
-    <h2 class="status-title">対局設定</h2>
-    <div class="side-select">
-      <button id="playSenteButton" class="side-button active" type="button" onclick="setHumanSide('player')">
-        先手で遊ぶ
-      </button>
-      <button id="playGoteButton" class="side-button" type="button" onclick="setHumanSide('enemy')">
-        後手で遊ぶ
-      </button>
-    </div>
-
-    <h2 class="status-title">持ち時間</h2>
-    <div class="time-control-select">
-      <button id="timeNoLimitButton" class="side-button" type="button" onclick="setTimeControl(0)">無制限</button>
-      <button id="time3Button" class="side-button active" type="button" onclick="setTimeControl(180)">3分切れ負け</button>
-      <button id="time10Button" class="side-button" type="button" onclick="setTimeControl(600)">10分切れ負け</button>
-    </div>
-
-    <div class="clock-panel">
-      <div id="playerClockCard" class="clock-card">
-        <div class="clock-label">先手</div>
-        <div id="playerClock" class="clock-time">03:00</div>
-      </div>
-      <div id="enemyClockCard" class="clock-card">
-        <div class="clock-label">後手</div>
-        <div id="enemyClock" class="clock-time">03:00</div>
-      </div>
-    </div>
-
     <aside class="side-panel">
+      <h2 class="status-title">対局設定</h2>
+      <div class="side-select">
+        <button id="playSenteButton" class="side-button active" type="button" onclick="setHumanSide('player')">
+          先手で遊ぶ
+        </button>
+        <button id="playGoteButton" class="side-button" type="button" onclick="setHumanSide('enemy')">
+          後手で遊ぶ
+        </button>
+      </div>
+
+      <h2 class="status-title">持ち時間</h2>
+      <button id="startGameButton" class="main-button start-button" type="button" onclick="startGame()">
+        対局スタート
+      </button>
+
+      <div class="time-control-select">
+        <button id="timeNoLimitButton" class="side-button" type="button" onclick="setTimeControl(0)">無制限</button>
+        <button id="time3Button" class="side-button active" type="button" onclick="setTimeControl(180)">3分切れ負け</button>
+        <button id="time10Button" class="side-button" type="button" onclick="setTimeControl(600)">10分切れ負け</button>
+      </div>
+
+      <div class="clock-panel">
+        <div id="playerClockCard" class="clock-card">
+          <div class="clock-label">先手</div>
+          <div id="playerClock" class="clock-time">03:00</div>
+        </div>
+        <div id="enemyClockCard" class="clock-card">
+          <div class="clock-label">後手</div>
+          <div id="enemyClock" class="clock-time">03:00</div>
+        </div>
+      </div>
+
+      <h2 class="status-title">打ち手エフェクト</h2>
+      <div class="time-control-select">
+        <button id="effectStandardButton" class="side-button active" type="button" onclick="setMoveEffectMode('standard')">標準</button>
+        <button id="effectFancyButton" class="side-button" type="button" onclick="setMoveEffectMode('fancy')">派手</button>
+        <button id="effectNoneButton" class="side-button" type="button" onclick="setMoveEffectMode('none')">なし</button>
+      </div>
+
       <h2 class="status-title">状況</h2>
       <div id="status" class="status-box">駒をクリックして選択してください。</div>
 
@@ -565,10 +653,18 @@
         <button class="main-button" type="button" onclick="clearSelection()">選択を解除</button>
         <button class="main-button" type="button" onclick="sendBoardToPython()">Pythonへ盤面送信</button>
       </div>
-
     </aside>
   </main>
 
+  <div id="promotionPanel" class="promotion-panel">
+    <div class="promotion-dialog">
+      <p id="promotionTitle" class="promotion-title">成りますか？</p>
+      <div class="promotion-buttons">
+        <button class="main-button" type="button" onclick="answerPromotion(true)">成る</button>
+        <button class="main-button" type="button" onclick="answerPromotion(false)">成らない</button>
+      </div>
+    </div>
+  </div>
   <script>
     const boardElement = document.getElementById("board");
     const statusElement = document.getElementById("status");
@@ -601,6 +697,9 @@
     let currentEvalScore = 0;
 
     let lastMove = null;
+    let moveEffectMode = "standard"; // standard / fancy / none
+    let gameStarted = false;
+    let pendingPromotionResolver = null;
 
     // 持ち時間管理。0なら無制限、180なら3分切れ負け、600なら10分切れ負け。
     let timeControlSeconds = 180;
@@ -676,6 +775,60 @@
       lastMove = null;
     }
 
+    function updateMoveEffectButtons() {
+      const buttons = [
+        { id: "effectStandardButton", mode: "standard" },
+        { id: "effectFancyButton", mode: "fancy" },
+        { id: "effectNoneButton", mode: "none" }
+      ];
+
+      buttons.forEach((item) => {
+        const button = document.getElementById(item.id);
+        if (!button) return;
+        button.classList.toggle("active", moveEffectMode === item.mode);
+      });
+    }
+
+    function setMoveEffectMode(mode) {
+      moveEffectMode = mode;
+      updateMoveEffectButtons();
+      renderBoard();
+    }
+
+    function addMoveEffectClass(cell) {
+      if (moveEffectMode === "none") return;
+      cell.classList.add(moveEffectMode === "fancy" ? "effect-fancy" : "effect-standard");
+    }
+
+    function updateStartButton() {
+      const button = document.getElementById("startGameButton");
+      if (!button) return;
+      button.disabled = gameStarted || gameOver;
+      button.textContent = gameStarted ? "対局中" : "対局スタート";
+    }
+
+    function askPromotion(pieceName) {
+      const panel = document.getElementById("promotionPanel");
+      const title = document.getElementById("promotionTitle");
+
+      if (title) title.textContent = `${pieceName}を成りますか？`;
+      if (panel) panel.classList.add("open");
+
+      return new Promise((resolve) => {
+        pendingPromotionResolver = resolve;
+      });
+    }
+
+    function answerPromotion(shouldPromote) {
+      const panel = document.getElementById("promotionPanel");
+      if (panel) panel.classList.remove("open");
+
+      if (pendingPromotionResolver) {
+        pendingPromotionResolver(shouldPromote);
+        pendingPromotionResolver = null;
+      }
+    }
+
     function updateSideButtons() {
       const senteButton = document.getElementById("playSenteButton");
       const goteButton = document.getElementById("playGoteButton");
@@ -739,8 +892,8 @@
         enemyClock.classList.toggle("danger", timeControlSeconds > 0 && enemyTimeLeft <= 30);
       }
 
-      if (playerCard) playerCard.classList.toggle("active", !gameOver && turn === "player");
-      if (enemyCard) enemyCard.classList.toggle("active", !gameOver && turn === "enemy");
+      if (playerCard) playerCard.classList.toggle("active", gameStarted && !gameOver && turn === "player");
+      if (enemyCard) enemyCard.classList.toggle("active", gameStarted && !gameOver && turn === "enemy");
 
       updateTimeControlButtons();
     }
@@ -757,7 +910,7 @@
       stopTurnTimer();
       updateClockUI();
 
-      if (gameOver || timeControlSeconds <= 0) return;
+      if (!gameStarted || gameOver || timeControlSeconds <= 0) return;
 
       lastTimerTickMs = Date.now();
       timerIntervalId = setInterval(() => {
@@ -784,6 +937,20 @@
     function setTimeControl(seconds) {
       timeControlSeconds = seconds;
       resetGame();
+    }
+
+    function startGame() {
+      if (gameOver) return;
+      if (gameStarted) return;
+
+      gameStarted = true;
+      updateStartButton();
+      setStatus(`対局を開始しました。${ownerLabel(turn)}の番です。`);
+      startTurnTimer();
+
+      if (isAiTurn()) {
+        setTimeout(requestAiMove, 500);
+      }
     }
 
     function handleTimeUp(owner) {
@@ -1005,7 +1172,7 @@
       renderBoard();
     }
 
-    function chooseLegalMoveForSelected(row, col) {
+    async function chooseLegalMoveForSelected(row, col) {
       const moves = findLegalMovesForSelected(row, col);
 
       if (moves.length === 0) {
@@ -1021,7 +1188,7 @@
           : null;
 
         const pieceName = movingPiece ? movingPiece.type : "この駒";
-        const shouldPromote = confirm(`${pieceName}を成りますか？`);
+        const shouldPromote = await askPromotion(pieceName);
 
         return shouldPromote ? promoteMove : normalMove;
       }
@@ -1045,6 +1212,7 @@
     }
     
     async function requestAiMove() {
+      if (!gameStarted || gameOver) return;
       if (gameOver || !isAiTurn()) return;
 
       const payload = {
@@ -1362,6 +1530,11 @@
             return;
           }
 
+          if (!gameStarted) {
+            setStatus("対局スタートを押してから指してください。");
+            return;
+          }
+
           if (!isHumanTurn()) {
             setStatus(`今はAI（${ownerLabel(aiSide)}）の番です。`);
             return;
@@ -1409,14 +1582,17 @@
           if (lastMove) {
             if (!lastMove.drop && isSameSquare(lastMove.from, row, col)) {
               cell.classList.add("last-move-from");
+              addMoveEffectClass(cell);
             }
 
             if (!lastMove.drop && isSameSquare(lastMove.to, row, col)) {
               cell.classList.add("last-move-to");
+              addMoveEffectClass(cell);
             }
 
             if (lastMove.drop && isSameSquare(lastMove.to, row, col)) {
               cell.classList.add("last-move-drop");
+              addMoveEffectClass(cell);
             }
           }
 
@@ -1452,6 +1628,11 @@
 
       if (gameOver) {
         setStatus("対局は終了しています。初期配置に戻すと再開できます。");
+        return;
+      }
+
+      if (!gameStarted) {
+        setStatus("対局スタートを押してから指してください。");
         return;
       }
 
@@ -1499,7 +1680,7 @@
         return;
       }
 
-      const legalMove = chooseLegalMoveForSelected(row, col);
+      const legalMove = await chooseLegalMoveForSelected(row, col);
 
       if (!legalMove) {
         setStatus("その場所には動けません。Python判定で合法手ではありません。");
@@ -1726,6 +1907,8 @@
     function resetGame() {
       stopTurnTimer();
       gameOver = false;
+      gameStarted = false;
+      answerPromotion(false);
 
       board = createInitialBoard();
 
@@ -1743,18 +1926,16 @@
 
       clearLegalMovesCache();
       updateSideButtons();
+      updateMoveEffectButtons();
+      updateStartButton();
       resetClocks();
 
-      setStatus(`初期配置に戻しました。あなたは${ownerLabel(humanSide)}です。${ownerLabel(turn)}の番です。`);
+      setStatus(`初期配置に戻しました。あなたは${ownerLabel(humanSide)}です。対局スタートを押すと開始します。`);
 
       renderBoard();
       refreshEvaluation();
-      startTurnTimer();
 
-      // 人間が後手を選んだ場合、先手AIが最初に指す
-      if (isAiTurn()) {
-        setTimeout(requestAiMove, 500);
-      }
+      // 人間が後手を選んだ場合でも、対局スタートを押すまではAIを動かさない。
     }
 
     function getGameState() {

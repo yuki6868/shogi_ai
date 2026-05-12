@@ -275,23 +275,28 @@ class ShogiBoard:
         piece = piece_data["type"]
         moves: list[Move] = []
 
+        def add_move(to_row: int, to_col: int) -> None:
+            if self.must_promote(owner, piece, to_row):
+                moves.append(Move(row, col, to_row, to_col, piece, promote=True))
+                return
+
+            if self.should_offer_promotion(owner, piece, row, to_row):
+                moves.append(Move(row, col, to_row, to_col, piece, promote=False))
+                moves.append(Move(row, col, to_row, to_col, piece, promote=True))
+                return
+
+            moves.append(Move(row, col, to_row, to_col, piece, promote=False))
+
         for dr, dc in self.move_dirs(piece, owner):
             nr, nc = row + dr, col + dc
+
             if not self.inside(nr, nc):
                 continue
 
             if self.owner_at(nr, nc) == owner:
                 continue
 
-            if self.must_promote(owner, piece, nr):
-                moves.append(Move(row, col, nr, nc, piece, promote=True))
-                continue
-
-            if self.should_force_promotion_choice(owner, piece, row, nr):
-                moves.append(Move(row, col, nr, nc, piece, promote=True))
-                continue
-
-            moves.append(Move(row, col, nr, nc, piece, promote=False))
+            add_move(nr, nc)
 
         for dr, dc in self.sliding_dirs(piece, owner):
             nr, nc = row + dr, col + dc
@@ -302,12 +307,7 @@ class ShogiBoard:
                 if target_owner == owner:
                     break
 
-                if self.must_promote(owner, piece, nr):
-                    moves.append(Move(row, col, nr, nc, piece, promote=True))
-                elif self.should_force_promotion_choice(owner, piece, row, nr):
-                    moves.append(Move(row, col, nr, nc, piece, promote=True))
-                else:
-                    moves.append(Move(row, col, nr, nc, piece, promote=False))
+                add_move(nr, nc)
 
                 if target_owner == self.enemy_of(owner):
                     break
