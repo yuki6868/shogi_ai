@@ -5,3 +5,4 @@ py7zr
 torch
 tqdm
 numpy
+cshogi

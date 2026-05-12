@@ -1225,7 +1225,7 @@
 
       console.log("AIへ送信:", payload);
 
-      const res = await fetch("http://127.0.0.1:8000/api/ai-move-mcts", {
+      const res = await fetch("http://127.0.0.1:8000/api/ai-move-strong", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -2058,7 +2058,7 @@
       const gameState = getGameState();
 
       try {
-        const response = await fetch("http://127.0.0.1:8000/api/ai-move-mcts", {
+        const response = await fetch("http://127.0.0.1:8000/api/ai-move-strong", {
           method: "POST",
           headers: {
             "Content-Type": "application/json"

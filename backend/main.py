@@ -25,6 +25,8 @@ from ai.old_ai.policy_dummy import (
 from ai.old_ai.policy_inference import get_policy_inference
 from ai.old_ai.value_inference import get_value_inference
 
+from ai.strong_ai.strong_engine import StrongEngine
+
 
 class AiMoveRequest(BaseModel):
     board: list
@@ -312,35 +314,61 @@ def ai_move_mcts(req: AiMoveRequest):
 
 @app.post("/api/ai-move-strong")
 def ai_move_strong(req: AiMoveRequest):
-    shogi = ShogiBoard.from_html_state(req.model_dump())
-    moves = shogi.generate_legal_moves(req.turn)
+    print("=== STRONG AI ROUTE: CSHOGI 2PLY ===")
 
-    if not moves:
+    shogi = ShogiBoard.from_html_state(req.model_dump())
+
+    engine = StrongEngine()
+    candidates = engine.get_candidates(
+        shogi=shogi,
+        turn=req.turn,
+        limit=30,
+    )
+
+    if not candidates:
         return {
             "ok": False,
-            "reason": "合法手がありません",
+            "reason": "cshogi合法手がありません",
             "move": None,
         }
 
-    evaluated = evaluate_moves(
-        shogi,
-        moves,
-        ai_owner="enemy",
-        lookahead=True,
-    )
+    selected = candidates[0]
+    selected.is_best = True
 
-    selected = select_strong_move(evaluated)
+    ai_win_rate = score_to_win_rate(int(selected.score))
+
+    print("selected usi:", selected.usi)
+    print("selected move_id:", selected.move_id)
+    print("selected score:", selected.score)
+    print("raw score:", getattr(selected, "raw_score", selected.score))
+    print("worst reply:", getattr(selected, "worst_reply_usi", None))
 
     return {
         "ok": True,
-        "mode": "STRONG THINK",
-        "moveId": move_to_id(selected["move"]),
-        "move": move_to_dict_with_id(selected["move"]),
-        "score": selected["score"],
-        "rawScore": selected.get("rawScore", selected["score"]),
-        "aiWinRate": selected["winRate"],
-        "playerWinRate": round(100 - selected["winRate"], 1),
-        "legalMoveCount": len(moves),
+        "mode": "CSHOGI 2PLY MATERIAL SEARCH",
+        "selectedBy": "best_score_after_opponent_reply",
+
+        "moveId": selected.move_id,
+        "move": selected.move.to_dict() | {"moveId": selected.move_id},
+
+        "score": int(selected.score),
+        "searchScore": int(selected.score),
+        "rawScore": int(getattr(selected, "raw_score", selected.score)),
+
+        "aiWinRate": ai_win_rate,
+        "playerWinRate": round(100 - ai_win_rate, 1),
+
+        "legalMoveCount": len(candidates),
+        "worstReplyUsi": getattr(selected, "worst_reply_usi", None),
+
+        "policyCandidates": [
+            engine.candidate_to_dict(item)
+            for item in candidates[:12]
+        ],
+        "mctsCandidates": [
+            engine.candidate_to_dict(item)
+            for item in candidates[:12]
+        ],
     }
 
 @app.post("/api/check-state")
