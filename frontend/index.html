@@ -277,8 +277,14 @@
       box-sizing: border-box;
     }
 
-    .piece.enemy {
+    .piece.flipped-piece {
       transform: rotate(180deg);
+    }
+
+    .board-toolbar {
+      display: flex;
+      justify-content: center;
+      margin: 10px 0;
     }
 
     .piece.promoted {
@@ -411,6 +417,12 @@
         </div>
       </div>
 
+      <div class="board-toolbar">
+        <button class="main-button" type="button" onclick="toggleBoardRotation()">
+          盤面を回転
+        </button>
+      </div>
+
       <div class="board-wrap">
         <div id="board" class="board"></div>
       </div>
@@ -477,6 +489,7 @@
 
     let humanSide = "player"; // player=先手, enemy=後手
     let aiSide = "enemy";
+    let boardFlipped = false;
 
     let playerLevel = 0.35;
     let currentEvalScore = 0;
@@ -548,6 +561,9 @@
     function setHumanSide(side) {
       humanSide = side;
       aiSide = side === "player" ? "enemy" : "player";
+
+      boardFlipped = humanSide === "enemy";
+
       updateSideButtons();
       resetGame();
     }
@@ -710,6 +726,41 @@
     function findLegalMoveForSelected(row, col) {
       const moves = findLegalMovesForSelected(row, col);
       return moves[0] || null;
+    }
+
+    function shouldFlipPiece(pieceOwner) {
+      if (!boardFlipped) {
+        return pieceOwner === "enemy";
+      }
+
+      return pieceOwner === "player";
+    }
+
+    function toDisplayPosition(row, col) {
+      if (!boardFlipped) {
+        return { row, col };
+      }
+
+      return {
+        row: 8 - row,
+        col: 8 - col
+      };
+    }
+
+    function toBoardPosition(displayRow, displayCol) {
+      if (!boardFlipped) {
+        return { row: displayRow, col: displayCol };
+      }
+
+      return {
+        row: 8 - displayRow,
+        col: 8 - displayCol
+      };
+    }
+
+    function toggleBoardRotation() {
+      boardFlipped = !boardFlipped;
+      renderBoard();
     }
 
     function chooseLegalMoveForSelected(row, col) {
@@ -1065,8 +1116,12 @@
       renderHands();
       boardElement.innerHTML = "";
 
-      for (let row = 0; row < 9; row++) {
-        for (let col = 0; col < 9; col++) {
+      for (let displayRow = 0; displayRow < 9; displayRow++) {
+        for (let displayCol = 0; displayCol < 9; displayCol++) {
+          const pos = toBoardPosition(displayRow, displayCol);
+          const row = pos.row;
+          const col = pos.col;
+
           const cell = document.createElement("div");
           cell.className = "cell";
 
@@ -1079,9 +1134,14 @@
           }
 
           const piece = board[row][col];
+
           if (piece) {
             const pieceElement = document.createElement("div");
             pieceElement.className = `piece ${piece.owner}`;
+
+            if (shouldFlipPiece(piece.owner)) {
+              pieceElement.classList.add("flipped-piece");
+            }
 
             if (piece.promoted) {
               pieceElement.classList.add("promoted");
