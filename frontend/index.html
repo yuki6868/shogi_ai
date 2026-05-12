@@ -223,6 +223,47 @@
       background: rgba(255, 255, 255, 0.18);
     }
 
+    .cell.last-move-from {
+      background: rgba(59, 130, 246, 0.28);
+      box-shadow: inset 0 0 0 4px rgba(37, 99, 235, 0.65);
+    }
+
+    .cell.last-move-to {
+      background: rgba(250, 204, 21, 0.45);
+      box-shadow: inset 0 0 0 4px rgba(202, 138, 4, 0.75);
+    }
+
+    .cell.last-move-to::after {
+      content: "着";
+      position: absolute;
+      right: 4px;
+      bottom: 3px;
+      font-size: 12px;
+      font-weight: 900;
+      color: #4b3521;
+      background: rgba(255, 255, 255, 0.82);
+      border-radius: 999px;
+      padding: 1px 5px;
+    }
+
+    .cell.last-move-drop {
+      background: rgba(34, 197, 94, 0.30);
+      box-shadow: inset 0 0 0 4px rgba(22, 163, 74, 0.70);
+    }
+
+    .cell.last-move-drop::after {
+      content: "打";
+      position: absolute;
+      right: 4px;
+      bottom: 3px;
+      font-size: 12px;
+      font-weight: 900;
+      color: #14532d;
+      background: rgba(255, 255, 255, 0.86);
+      border-radius: 999px;
+      padding: 1px 5px;
+    }
+
     .policy-box {
       margin-top: 10px;
       padding: 12px;
@@ -559,6 +600,8 @@
     let playerLevel = 0.35;
     let currentEvalScore = 0;
 
+    let lastMove = null;
+
     // 持ち時間管理。0なら無制限、180なら3分切れ負け、600なら10分切れ負け。
     let timeControlSeconds = 180;
     let playerTimeLeft = timeControlSeconds;
@@ -619,6 +662,18 @@
 
     function isAiTurn() {
       return turn === aiSide;
+    }
+
+    function rememberLastMove(move) {
+      lastMove = move;
+    }
+
+    function isSameSquare(a, row, col) {
+      return a && a.row === row && a.col === col;
+    }
+
+    function clearLastMove() {
+      lastMove = null;
     }
 
     function updateSideButtons() {
@@ -1175,6 +1230,15 @@
           promoted: false
         };
 
+        rememberLastMove({
+          drop: true,
+          from: null,
+          to: { row: toRow, col: toCol },
+          owner: turn,
+          piece: droppedType,
+          promote: false
+        });
+
         if (turn === "player") {
           removeOnePieceFromHand(playerHand, droppedType);
         } else {
@@ -1216,6 +1280,15 @@
           owner: movingPiece.owner,
           promoted: move.promote || movingPiece.promoted || false
         };
+
+        rememberLastMove({
+          drop: false,
+          from: { row: fromRow, col: fromCol },
+          to: { row: toRow, col: toCol },
+          owner: movingPiece.owner,
+          piece: newType,
+          promote: move.promote || false
+        });
 
         setStatus(`AIが${newType}を動かしました。`);
       }
@@ -1333,6 +1406,20 @@
             cell.classList.add("can-move");
           }
 
+          if (lastMove) {
+            if (!lastMove.drop && isSameSquare(lastMove.from, row, col)) {
+              cell.classList.add("last-move-from");
+            }
+
+            if (!lastMove.drop && isSameSquare(lastMove.to, row, col)) {
+              cell.classList.add("last-move-to");
+            }
+
+            if (lastMove.drop && isSameSquare(lastMove.to, row, col)) {
+              cell.classList.add("last-move-drop");
+            }
+          }
+
           const piece = board[row][col];
 
           if (piece) {
@@ -1447,6 +1534,15 @@
 
       if (!movingPiece) return;
 
+      rememberLastMove({
+        drop: false,
+        from: { row: fromRow, col: fromCol },
+        to: { row: toRow, col: toCol },
+        owner: movingPiece.owner,
+        piece: movingPiece.type,
+        promote: forcePromote
+      });
+
       board[toRow][toCol] = movingPiece;
       board[fromRow][fromCol] = null;
 
@@ -1486,6 +1582,15 @@
       };
 
       board[row][col] = droppedPiece;
+
+      rememberLastMove({
+        drop: true,
+        from: null,
+        to: { row, col },
+        owner: droppedPiece.owner,
+        piece: droppedPiece.type,
+        promote: false
+      });
 
       if (selectedHandPiece.owner === "player") {
         playerHand.splice(selectedHandPiece.index, 1);
@@ -1633,6 +1738,8 @@
       enemyHand = [];
       playerLevel = 0.35;
       currentEvalScore = 0;
+
+      clearLastMove();
 
       clearLegalMovesCache();
       updateSideButtons();
