@@ -348,6 +348,53 @@
       color: white;
     }
 
+
+    .clock-panel {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin: 14px 0 18px;
+    }
+
+    .clock-card {
+      padding: 12px;
+      border-radius: 16px;
+      background: #f3ead7;
+      border: 1px solid rgba(80, 55, 30, 0.14);
+      text-align: center;
+    }
+
+    .clock-card.active {
+      outline: 3px solid rgba(75, 53, 33, 0.28);
+      background: #fff5df;
+    }
+
+    .clock-label {
+      font-size: 13px;
+      font-weight: 800;
+      color: #6b5744;
+      margin-bottom: 4px;
+    }
+
+    .clock-time {
+      font-size: 28px;
+      font-weight: 900;
+      letter-spacing: 0.04em;
+      color: #3d2b1c;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .clock-time.danger {
+      color: #b3261e;
+    }
+
+    .time-control-select {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 18px;
+    }
+
     .note {
       margin-top: 18px;
       color: #8a7a68;
@@ -445,6 +492,24 @@
       </button>
     </div>
 
+    <h2 class="status-title">持ち時間</h2>
+    <div class="time-control-select">
+      <button id="timeNoLimitButton" class="side-button" type="button" onclick="setTimeControl(0)">無制限</button>
+      <button id="time3Button" class="side-button active" type="button" onclick="setTimeControl(180)">3分切れ負け</button>
+      <button id="time10Button" class="side-button" type="button" onclick="setTimeControl(600)">10分切れ負け</button>
+    </div>
+
+    <div class="clock-panel">
+      <div id="playerClockCard" class="clock-card">
+        <div class="clock-label">先手</div>
+        <div id="playerClock" class="clock-time">03:00</div>
+      </div>
+      <div id="enemyClockCard" class="clock-card">
+        <div class="clock-label">後手</div>
+        <div id="enemyClock" class="clock-time">03:00</div>
+      </div>
+    </div>
+
     <aside class="side-panel">
       <h2 class="status-title">状況</h2>
       <div id="status" class="status-box">駒をクリックして選択してください。</div>
@@ -493,6 +558,14 @@
 
     let playerLevel = 0.35;
     let currentEvalScore = 0;
+
+    // 持ち時間管理。0なら無制限、180なら3分切れ負け、600なら10分切れ負け。
+    let timeControlSeconds = 180;
+    let playerTimeLeft = timeControlSeconds;
+    let enemyTimeLeft = timeControlSeconds;
+    let timerIntervalId = null;
+    let lastTimerTickMs = null;
+    let gameOver = false;
 
     function player(type) {
       return { type, owner: "player", promoted: false };
@@ -556,6 +629,120 @@
 
       senteButton.classList.toggle("active", humanSide === "player");
       goteButton.classList.toggle("active", humanSide === "enemy");
+    }
+
+
+    function formatClock(seconds) {
+      if (timeControlSeconds <= 0) return "--:--";
+
+      const safeSeconds = Math.max(0, Math.ceil(seconds));
+      const minutes = Math.floor(safeSeconds / 60);
+      const restSeconds = safeSeconds % 60;
+
+      return `${String(minutes).padStart(2, "0")}:${String(restSeconds).padStart(2, "0")}`;
+    }
+
+    function getTimeLeft(owner) {
+      return owner === "player" ? playerTimeLeft : enemyTimeLeft;
+    }
+
+    function setTimeLeft(owner, seconds) {
+      if (owner === "player") {
+        playerTimeLeft = seconds;
+      } else {
+        enemyTimeLeft = seconds;
+      }
+    }
+
+    function updateTimeControlButtons() {
+      const buttons = [
+        { id: "timeNoLimitButton", seconds: 0 },
+        { id: "time3Button", seconds: 180 },
+        { id: "time10Button", seconds: 600 }
+      ];
+
+      buttons.forEach((item) => {
+        const button = document.getElementById(item.id);
+        if (!button) return;
+        button.classList.toggle("active", timeControlSeconds === item.seconds);
+      });
+    }
+
+    function updateClockUI() {
+      const playerClock = document.getElementById("playerClock");
+      const enemyClock = document.getElementById("enemyClock");
+      const playerCard = document.getElementById("playerClockCard");
+      const enemyCard = document.getElementById("enemyClockCard");
+
+      if (playerClock) {
+        playerClock.textContent = formatClock(playerTimeLeft);
+        playerClock.classList.toggle("danger", timeControlSeconds > 0 && playerTimeLeft <= 30);
+      }
+
+      if (enemyClock) {
+        enemyClock.textContent = formatClock(enemyTimeLeft);
+        enemyClock.classList.toggle("danger", timeControlSeconds > 0 && enemyTimeLeft <= 30);
+      }
+
+      if (playerCard) playerCard.classList.toggle("active", !gameOver && turn === "player");
+      if (enemyCard) enemyCard.classList.toggle("active", !gameOver && turn === "enemy");
+
+      updateTimeControlButtons();
+    }
+
+    function stopTurnTimer() {
+      if (timerIntervalId) {
+        clearInterval(timerIntervalId);
+        timerIntervalId = null;
+      }
+      lastTimerTickMs = null;
+    }
+
+    function startTurnTimer() {
+      stopTurnTimer();
+      updateClockUI();
+
+      if (gameOver || timeControlSeconds <= 0) return;
+
+      lastTimerTickMs = Date.now();
+      timerIntervalId = setInterval(() => {
+        const now = Date.now();
+        const elapsedSeconds = (now - lastTimerTickMs) / 1000;
+        lastTimerTickMs = now;
+
+        const next = Math.max(0, getTimeLeft(turn) - elapsedSeconds);
+        setTimeLeft(turn, next);
+        updateClockUI();
+
+        if (next <= 0) {
+          handleTimeUp(turn);
+        }
+      }, 200);
+    }
+
+    function resetClocks() {
+      playerTimeLeft = timeControlSeconds;
+      enemyTimeLeft = timeControlSeconds;
+      updateClockUI();
+    }
+
+    function setTimeControl(seconds) {
+      timeControlSeconds = seconds;
+      resetGame();
+    }
+
+    function handleTimeUp(owner) {
+      stopTurnTimer();
+      gameOver = true;
+      clearSelection();
+
+      const winner = owner === "player" ? "後手" : "先手";
+      const loser = ownerLabel(owner);
+      const message = `${loser}の持ち時間が切れました。${winner}の勝ちです。`;
+
+      setStatus(message);
+      updateClockUI();
+      alert(message);
     }
 
     function setHumanSide(side) {
@@ -803,6 +990,8 @@
     }
     
     async function requestAiMove() {
+      if (gameOver || !isAiTurn()) return;
+
       const payload = {
         board: board,
         playerHand: playerHand,
@@ -829,6 +1018,8 @@
       }
 
       const data = await res.json();
+
+      if (gameOver) return;
 
       if (!data.ok || !data.move) {
         await handleNoLegalMoves(turn);
@@ -867,6 +1058,10 @@
     }
 
     async function handleNoLegalMoves(owner) {
+      stopTurnTimer();
+      gameOver = true;
+      updateClockUI();
+
       const isCheck = await fetchCheckState(owner);
 
       if (isCheck) {
@@ -1089,6 +1284,11 @@
         }
 
         button.onclick = async () => {
+          if (gameOver) {
+            setStatus("対局は終了しています。初期配置に戻すと再開できます。");
+            return;
+          }
+
           if (!isHumanTurn()) {
             setStatus(`今はAI（${ownerLabel(aiSide)}）の番です。`);
             return;
@@ -1162,6 +1362,11 @@
     }
 
     async function handleCellClick(row, col) {
+
+      if (gameOver) {
+        setStatus("対局は終了しています。初期配置に戻すと再開できます。");
+        return;
+      }
 
       if (!isHumanTurn()) {
         setStatus(`今はAI（${ownerLabel(aiSide)}）の番です。`);
@@ -1399,8 +1604,10 @@
     }
 
     function switchTurn() {
+      stopTurnTimer();
       turn = turn === "player" ? "enemy" : "player";
       setStatus(`${turn === "player" ? "先手" : "後手"}の番です。`);
+      startTurnTimer();
     }
 
     function clearSelection() {
@@ -1412,6 +1619,9 @@
     }
 
     function resetGame() {
+      stopTurnTimer();
+      gameOver = false;
+
       board = createInitialBoard();
 
       // 将棋は必ず先手から開始
@@ -1426,11 +1636,13 @@
 
       clearLegalMovesCache();
       updateSideButtons();
+      resetClocks();
 
       setStatus(`初期配置に戻しました。あなたは${ownerLabel(humanSide)}です。${ownerLabel(turn)}の番です。`);
 
       renderBoard();
       refreshEvaluation();
+      startTurnTimer();
 
       // 人間が後手を選んだ場合、先手AIが最初に指す
       if (isAiTurn()) {
