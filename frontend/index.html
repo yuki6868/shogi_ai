@@ -320,6 +320,28 @@
       color: white;
     }
 
+    .side-select {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 18px;
+    }
+
+    .side-button {
+      border: 1px solid rgba(80, 55, 30, 0.22);
+      border-radius: 14px;
+      padding: 10px;
+      font-weight: 800;
+      cursor: pointer;
+      background: #efe2c9;
+      color: #4b3521;
+    }
+
+    .side-button.active {
+      background: #4b3521;
+      color: white;
+    }
+
     .note {
       margin-top: 18px;
       color: #8a7a68;
@@ -401,6 +423,16 @@
       </div>
     </section>
 
+    <h2 class="status-title">対局設定</h2>
+    <div class="side-select">
+      <button id="playSenteButton" class="side-button active" type="button" onclick="setHumanSide('player')">
+        先手で遊ぶ
+      </button>
+      <button id="playGoteButton" class="side-button" type="button" onclick="setHumanSide('enemy')">
+        後手で遊ぶ
+      </button>
+    </div>
+
     <aside class="side-panel">
       <h2 class="status-title">状況</h2>
       <div id="status" class="status-box">駒をクリックして選択してください。</div>
@@ -442,6 +474,9 @@
     let playerHand = [];
     let enemyHand = [];
     let legalMovesCache = [];
+
+    let humanSide = "player"; // player=先手, enemy=後手
+    let aiSide = "enemy";
 
     let playerLevel = 0.35;
     let currentEvalScore = 0;
@@ -486,6 +521,35 @@
       };
 
       return map[type] || type;
+    }
+
+    function ownerLabel(owner) {
+      return owner === "player" ? "先手" : "後手";
+    }
+
+    function isHumanTurn() {
+      return turn === humanSide;
+    }
+
+    function isAiTurn() {
+      return turn === aiSide;
+    }
+
+    function updateSideButtons() {
+      const senteButton = document.getElementById("playSenteButton");
+      const goteButton = document.getElementById("playGoteButton");
+
+      if (!senteButton || !goteButton) return;
+
+      senteButton.classList.toggle("active", humanSide === "player");
+      goteButton.classList.toggle("active", humanSide === "enemy");
+    }
+
+    function setHumanSide(side) {
+      humanSide = side;
+      aiSide = side === "player" ? "enemy" : "player";
+      updateSideButtons();
+      resetGame();
     }
 
     function createInitialBoard() {
@@ -974,8 +1038,13 @@
         }
 
         button.onclick = async () => {
+          if (!isHumanTurn()) {
+            setStatus(`今はAI（${ownerLabel(aiSide)}）の番です。`);
+            return;
+          }
+
           if (owner !== turn) {
-            setStatus(`今は${turn === "player" ? "先手" : "後手"}の番です。`);
+            setStatus(`今は${ownerLabel(turn)}の番です。`);
             return;
           }
 
@@ -1033,6 +1102,12 @@
     }
 
     async function handleCellClick(row, col) {
+
+      if (!isHumanTurn()) {
+        setStatus(`今はAI（${ownerLabel(aiSide)}）の番です。`);
+        return;
+      }
+
       if (selectedHandPiece) {
         await handleDropPiece(row, col);
         return;
@@ -1096,7 +1171,7 @@
       const ended = await checkGameEndOrContinue();
       if (ended) return;
 
-      if (turn === "enemy") {
+      if (isAiTurn()) {
         setTimeout(requestAiMove, 500);
       }
     }
@@ -1167,7 +1242,7 @@
       const ended = await checkGameEndOrContinue();
       if (ended) return;
 
-      if (turn === "enemy") {
+      if (isAiTurn()) {
         setTimeout(requestAiMove, 500);
       }
     }
@@ -1278,16 +1353,29 @@
 
     function resetGame() {
       board = createInitialBoard();
+
+      // 将棋は必ず先手から開始
       turn = "player";
+
       selected = null;
       selectedHandPiece = null;
       playerHand = [];
       enemyHand = [];
       playerLevel = 0.35;
       currentEvalScore = 0;
-      setStatus("初期配置に戻しました。先手の番です。");
+
+      clearLegalMovesCache();
+      updateSideButtons();
+
+      setStatus(`初期配置に戻しました。あなたは${ownerLabel(humanSide)}です。${ownerLabel(turn)}の番です。`);
+
       renderBoard();
       refreshEvaluation();
+
+      // 人間が後手を選んだ場合、先手AIが最初に指す
+      if (isAiTurn()) {
+        setTimeout(requestAiMove, 500);
+      }
     }
 
     function getGameState() {
@@ -1296,7 +1384,8 @@
         playerHand,
         enemyHand,
         turn,
-        playerLevel
+        playerLevel,
+        aiOwner: aiSide
       };
     }
     async function fetchPolicyStatus() {

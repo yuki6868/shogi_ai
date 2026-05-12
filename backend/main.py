@@ -32,6 +32,7 @@ class AiMoveRequest(BaseModel):
     enemyHand: list | dict = []
     turn: str = "enemy"
     playerLevel: float = 0.35
+    aiOwner: str = "enemy"
 
 
 app = FastAPI()
@@ -69,13 +70,17 @@ def legal_moves(req: AiMoveRequest):
 @app.post("/api/evaluate")
 def evaluate(req: AiMoveRequest):
     shogi = ShogiBoard.from_html_state(req.model_dump())
-    score = evaluate_board(shogi, ai_owner="enemy")
+    ai_owner = req.aiOwner if req.aiOwner in ["player", "enemy"] else "enemy"
+
+    score = evaluate_board(shogi, ai_owner=ai_owner)
+    ai_win_rate = score_to_win_rate(score)
 
     return {
         "ok": True,
         "score": score,
-        "aiWinRate": score_to_win_rate(score),
-        "playerWinRate": round(100 - score_to_win_rate(score), 1),
+        "aiWinRate": ai_win_rate,
+        "playerWinRate": round(100 - ai_win_rate, 1),
+        "aiOwner": ai_owner,
         "meaning": "score > 0 ならAI有利、score < 0 なら人間有利です",
     }
 
