@@ -14,11 +14,11 @@ from ai.policy_inference import get_policy_inference
 from ai.value_inference import get_value_inference
 
 
-MCTS_SIMULATIONS = 300
-MCTS_DEPTH_LIMIT = 8
+MCTS_SIMULATIONS = 120
+MCTS_DEPTH_LIMIT = 5
 
-MAX_CANDIDATES = 80
-TACTICAL_CANDIDATE_LIMIT = 80
+MAX_CANDIDATES = 24
+TACTICAL_CANDIDATE_LIMIT = 24
 
 CPUCT = 1.5
 VALUE_SCALE = 1200.0

@@ -10,7 +10,11 @@ from ai.board import Move, ShogiBoard
 from ai.board_tensor import board_to_full_tensor
 from ai.move_encoder import move_to_id
 from ai.path_config import WORKSPACE_DIR
-from ai.policy_dataset import label_to_move_id, policy_output_size
+from ai.policy_dataset import (
+    label_to_move_id,
+    policy_output_size,
+    move_id_to_label,
+)
 from ai.policy_model import create_policy_model
 
 
@@ -105,7 +109,6 @@ class PolicyInference:
         return ranked[:top_k]
 
     def _move_id_to_label_safe(self, move_id: str) -> int:
-        from ai.policy_dataset import move_id_to_label
 
         return move_id_to_label(move_id)
 

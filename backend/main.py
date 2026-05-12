@@ -22,11 +22,7 @@ from ai.policy_dummy import (
     policy_candidates_to_dicts,
 )
 
-from ai.policy_inference import (
-    get_policy_inference,
-    filter_policy_ai_candidates,
-    policy_ai_candidates_to_dicts,
-)
+from ai.policy_inference import get_policy_inference
 from ai.value_inference import get_value_inference
 
 
@@ -103,6 +99,7 @@ def ai_move(req: AiMoveRequest):
     policy_score_map = {}
 
     if policy.available:
+        # ここで1回だけPolicy AI推論する
         ranked_policy = policy.rank_legal_moves(
             shogi=shogi,
             legal_moves=moves,
@@ -110,17 +107,26 @@ def ai_move(req: AiMoveRequest):
         )
 
         policy_moves = [item["move"] for item in ranked_policy]
+
         policy_score_map = {
             item["moveId"]: float(item["policyScore"])
             for item in ranked_policy
         }
 
-        policy_candidates = policy_ai_candidates_to_dicts(
-            shogi=shogi,
-            legal_moves=moves,
-            limit=12,
-        )
+        # もう一度 policy_ai_candidates_to_dicts() を呼ばない
+        # ranked_policy の結果をそのまま画面表示用に変換する
+        policy_candidates = [
+            {
+                "moveId": item["moveId"],
+                "moveText": move_to_dict_with_id(item["move"]).get("moveText", ""),
+                "policyScore": round(float(item["policyScore"]), 4),
+                "move": item["move"].to_dict(),
+            }
+            for item in ranked_policy
+        ]
+
         policy_mode = "POLICY AI"
+
     else:
         policy_moves = filter_policy_candidates(
             shogi,
@@ -128,8 +134,15 @@ def ai_move(req: AiMoveRequest):
             owner=req.turn,
             top_k=12,
         )
+
         ranked = rank_natural_moves(shogi, moves, req.turn)
         policy_candidates = policy_candidates_to_dicts(ranked, limit=12)
+
+        policy_score_map = {
+            item["moveId"]: float(item["policyScore"])
+            for item in ranked[:12]
+        }
+
         policy_mode = "POLICY DUMMY"
 
     evaluated = evaluate_moves(
@@ -165,14 +178,11 @@ def ai_move(req: AiMoveRequest):
         "moveId": move_to_id(selected["move"]),
         "move": move_to_dict_with_id(selected["move"]),
 
-        # 現局面
         "currentScore": current_score,
 
-        # 画面表示用：AIが一手指した直後の評価値
         "score": display_score,
         "rawScore": display_score,
 
-        # 内部選択用：相手の最善応手込みの評価値
         "replyScore": selected["score"],
 
         "aiWinRate": display_win_rate,

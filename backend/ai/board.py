@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from copy import deepcopy
 from typing import Any, Optional
 
 
@@ -133,11 +132,27 @@ class ShogiBoard:
         return converted
 
     def clone(self) -> "ShogiBoard":
+        new_board = []
+
+        for row in self.board:
+            new_row = []
+
+            for piece in row:
+                if piece is None:
+                    new_row.append(None)
+                else:
+                    new_row.append({
+                        "type": piece["type"],
+                        "owner": piece["owner"],
+                    })
+
+            new_board.append(new_row)
+
         return ShogiBoard(
-            deepcopy(self.board),
-            self.turn,
-            deepcopy(self.player_hand),
-            deepcopy(self.enemy_hand),
+            board=new_board,
+            turn=self.turn,
+            player_hand=self.player_hand.copy(),
+            enemy_hand=self.enemy_hand.copy(),
         )
 
     def inside(self, row: int, col: int) -> bool:
@@ -169,6 +184,15 @@ class ShogiBoard:
             return False
         return self.can_promote_zone(owner, from_row) or self.can_promote_zone(owner, to_row)
 
+    def should_force_promotion_choice(self, owner: str, piece: str, from_row: int, to_row: int) -> bool:
+        if piece not in PROMOTE_MAP:
+            return False
+
+        if not self.should_offer_promotion(owner, piece, from_row, to_row):
+            return False
+
+        return True
+    
     def must_promote(self, owner: str, piece: str, to_row: int) -> bool:
         if piece in ("P", "L"):
             return to_row == (0 if owner == "player" else 8)
@@ -255,28 +279,37 @@ class ShogiBoard:
             nr, nc = row + dr, col + dc
             if not self.inside(nr, nc):
                 continue
+
             if self.owner_at(nr, nc) == owner:
                 continue
 
-            promote = self.must_promote(owner, piece, nr)
-            moves.append(Move(row, col, nr, nc, piece, promote=promote))
-
-            if self.should_offer_promotion(owner, piece, row, nr) and not promote:
+            if self.must_promote(owner, piece, nr):
                 moves.append(Move(row, col, nr, nc, piece, promote=True))
+                continue
+
+            if self.should_force_promotion_choice(owner, piece, row, nr):
+                moves.append(Move(row, col, nr, nc, piece, promote=True))
+                continue
+
+            moves.append(Move(row, col, nr, nc, piece, promote=False))
 
         for dr, dc in self.sliding_dirs(piece, owner):
             nr, nc = row + dr, col + dc
+
             while self.inside(nr, nc):
-                if self.owner_at(nr, nc) == owner:
+                target_owner = self.owner_at(nr, nc)
+
+                if target_owner == owner:
                     break
 
-                promote = self.must_promote(owner, piece, nr)
-                moves.append(Move(row, col, nr, nc, piece, promote=promote))
-
-                if self.should_offer_promotion(owner, piece, row, nr) and not promote:
+                if self.must_promote(owner, piece, nr):
                     moves.append(Move(row, col, nr, nc, piece, promote=True))
+                elif self.should_force_promotion_choice(owner, piece, row, nr):
+                    moves.append(Move(row, col, nr, nc, piece, promote=True))
+                else:
+                    moves.append(Move(row, col, nr, nc, piece, promote=False))
 
-                if self.owner_at(nr, nc) == self.enemy_of(owner):
+                if target_owner == self.enemy_of(owner):
                     break
 
                 nr += dr
