@@ -7,7 +7,7 @@ import argparse
 
 import py7zr
 
-from ai.path_config import DEFAULT_DATASET_DIR, find_wdoor_archive
+from shogi_core.path_config import DEFAULT_DATASET_DIR, find_wdoor_archive
 
 
 def extract_wdoor(

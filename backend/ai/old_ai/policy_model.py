@@ -5,7 +5,7 @@ from __future__ import annotations
 import torch
 from torch import nn
 
-from ai.policy_dataset import policy_output_size
+from ai.old_ai.policy_dataset import policy_output_size
 
 
 INPUT_CHANNELS = 44

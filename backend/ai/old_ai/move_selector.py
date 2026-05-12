@@ -251,12 +251,24 @@ def select_mcts_education_move(
 
         closeness = -abs(win_rate - target_win_rate)
         strength = score
-        immediate_gain = raw_score * 0.25
+        
+        # rawScore は王手直後だけ膨らむので、選択にはほぼ使わない
+        immediate_gain = max(
+            -200.0,
+            min(200.0, raw_score - score),
+        ) * 0.05
+
+        is_check = bool(item.get("isCheck", False))
+        is_good_check = bool(item.get("isGoodCheck", False))
+
+        useless_check_penalty = 0.0
+        if is_check and not is_good_check:
+            useless_check_penalty = 900.0
 
         return (
             strength * 1.0
             + immediate_gain
             + closeness * (4.0 - 2.5 * player_level)
+            - useless_check_penalty
         )
-
     return max(safe_moves, key=education_key)

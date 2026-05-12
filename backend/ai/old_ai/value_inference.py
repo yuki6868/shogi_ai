@@ -6,9 +6,9 @@ from pathlib import Path
 
 import torch
 
-from ai.board_tensor import board_to_full_tensor
-from ai.path_config import WORKSPACE_DIR
-from ai.value_model import create_value_model
+from shogi_core.board_tensor import board_to_full_tensor
+from shogi_core.path_config import WORKSPACE_DIR
+from ai.old_ai.value_model import create_value_model
 
 
 DEFAULT_VALUE_MODEL_PATH = WORKSPACE_DIR / "models" / "value_model.pt"

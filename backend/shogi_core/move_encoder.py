@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Iterable
 
-from ai.board import BOARD_SIZE, Move
+from shogi_core.board import BOARD_SIZE, Move
 
 
 FILES = "987654321"

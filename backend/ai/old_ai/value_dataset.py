@@ -7,13 +7,13 @@ from pathlib import Path
 import torch
 from torch.utils.data import Dataset
 
-from ai.board_tensor import board_to_full_tensor
-from ai.kifu_parser import (
+from shogi_core.board_tensor import board_to_full_tensor
+from shogi_core.kifu_parser import (
     ParsedMoveRecord,
     iter_csa_files,
     parse_csa_file,
 )
-from ai.path_config import DEFAULT_DATASET_DIR
+from shogi_core.path_config import DEFAULT_DATASET_DIR
 
 
 def infer_winner_from_records(records: list[ParsedMoveRecord]) -> str | None:

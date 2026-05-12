@@ -4,7 +4,7 @@ from typing import Dict
 
 import torch
 
-from ai.board import BOARD_SIZE, ShogiBoard
+from shogi_core.board import BOARD_SIZE, ShogiBoard
 
 
 PIECE_CHANNELS: Dict[str, int] = {
@@ -159,7 +159,7 @@ def board_to_full_tensor(board: ShogiBoard) -> torch.Tensor:
 
 
 if __name__ == "__main__":
-    from ai.kifu_parser import create_initial_board
+    from shogi_core.kifu_parser import create_initial_board
 
     board = create_initial_board()
 

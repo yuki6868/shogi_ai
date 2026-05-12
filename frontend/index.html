@@ -1274,7 +1274,7 @@
             <span class="policy-move-id">
               ${index + 1}. ${isSelected ? "▶ " : ""}${label}
             </span>
-            <span class="policy-score">評価 ${item.rawScore ?? item.score}</span>
+            <span class="policy-score">評価 ${item.searchScore ?? item.score}</span>
           </div>
         `;
       }).join("");

@@ -1,4 +1,4 @@
-# backend/ai/train_policy.py
+# backend/ai/train_value.py
 
 from __future__ import annotations
 
@@ -9,12 +9,13 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader, random_split
 
-from ai.policy_dataset import PolicyDataset, policy_output_size
-from ai.policy_model import create_policy_model
-from ai.path_config import DEFAULT_DATASET_DIR, WORKSPACE_DIR
+from shogi_core.path_config import DEFAULT_DATASET_DIR, WORKSPACE_DIR
+from ai.old_ai.value_dataset import ValueDataset
+from ai.old_ai.value_model import create_value_model
+
 
 DEFAULT_MODEL_DIR = WORKSPACE_DIR / "models"
-DEFAULT_MODEL_PATH = DEFAULT_MODEL_DIR / "policy_model.pt"
+DEFAULT_MODEL_PATH = DEFAULT_MODEL_DIR / "value_model.pt"
 
 
 def get_device() -> torch.device:
@@ -54,14 +55,12 @@ def train_one_epoch(
 
         total_loss += float(loss.item()) * x.size(0)
 
-        pred = torch.argmax(logits, dim=1)
+        probs = torch.sigmoid(logits)
+        pred = (probs >= 0.5).float()
         total_correct += int((pred == y).sum().item())
         total_count += int(x.size(0))
 
-    avg_loss = total_loss / max(total_count, 1)
-    accuracy = total_correct / max(total_count, 1)
-
-    return avg_loss, accuracy
+    return total_loss / max(total_count, 1), total_correct / max(total_count, 1)
 
 
 @torch.no_grad()
@@ -86,25 +85,18 @@ def evaluate(
 
         total_loss += float(loss.item()) * x.size(0)
 
-        pred = torch.argmax(logits, dim=1)
+        probs = torch.sigmoid(logits)
+        pred = (probs >= 0.5).float()
         total_correct += int((pred == y).sum().item())
         total_count += int(x.size(0))
 
-    avg_loss = total_loss / max(total_count, 1)
-    accuracy = total_correct / max(total_count, 1)
-
-    return avg_loss, accuracy
+    return total_loss / max(total_count, 1), total_correct / max(total_count, 1)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="候補手AI PolicyModelを学習します")
+    parser = argparse.ArgumentParser(description="評価関数AI ValueModelを学習します")
 
-    parser.add_argument(
-        "--dataset-dir",
-        type=str,
-        default=str(DEFAULT_DATASET_DIR),
-        help="CSA棋譜フォルダ。省略時は shogi_ai と同じ階層の dataset/",
-    )
+    parser.add_argument("--dataset-dir", type=str, default=str(DEFAULT_DATASET_DIR))
     parser.add_argument("--max-files", type=int, default=20)
     parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--batch-size", type=int, default=32)
@@ -118,7 +110,7 @@ def main() -> None:
     device = get_device()
     print(f"device = {device}")
 
-    dataset = PolicyDataset(
+    dataset = ValueDataset(
         dataset_dir=args.dataset_dir,
         max_files=args.max_files,
         strict_legal=not args.no_strict,
@@ -141,33 +133,23 @@ def main() -> None:
             generator=torch.Generator().manual_seed(42),
         )
 
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=args.batch_size,
-        shuffle=True,
-    )
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
 
     val_loader = None
     if val_dataset is not None:
-        val_loader = DataLoader(
-            val_dataset,
-            batch_size=args.batch_size,
-            shuffle=False,
-        )
+        val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
 
     print(f"train size = {len(train_dataset)}")
     print(f"val size = {0 if val_dataset is None else len(val_dataset)}")
-    print(f"policy output size = {policy_output_size()}")
 
-    model = create_policy_model(device=device)
-
-    criterion = nn.CrossEntropyLoss()
+    model = create_value_model(device=device)
+    criterion = nn.BCEWithLogitsLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-
-    best_val_loss = float("inf")
 
     save_path = Path(args.save_path)
     save_path.parent.mkdir(parents=True, exist_ok=True)
+
+    best_val_loss = float("inf")
 
     for epoch in range(1, args.epochs + 1):
         train_loss, train_acc = train_one_epoch(
@@ -201,12 +183,12 @@ def main() -> None:
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
                 torch.save(model.state_dict(), save_path)
-                print(f"saved best model: {save_path}")
+                print(f"saved best value model: {save_path}")
         else:
             torch.save(model.state_dict(), save_path)
-            print(f"saved model: {save_path}")
+            print(f"saved value model: {save_path}")
 
-    print("training finished")
+    print("value training finished")
 
 
 if __name__ == "__main__":

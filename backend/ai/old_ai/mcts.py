@@ -7,21 +7,21 @@ import random
 from dataclasses import dataclass, field
 from typing import Optional
 
-from ai.board import Move, ShogiBoard
-from ai.evaluator import evaluate_board, score_to_win_rate
-from ai.move_encoder import move_to_id
-from ai.policy_inference import get_policy_inference
-from ai.value_inference import get_value_inference
+from shogi_core.board import Move, ShogiBoard
+from ai.old_ai.evaluator import evaluate_board, score_to_win_rate
+from shogi_core.move_encoder import move_to_id
+from ai.old_ai.policy_inference import get_policy_inference
+from ai.old_ai.value_inference import get_value_inference
 
 
 MCTS_SIMULATIONS = 0
 MCTS_DEPTH_LIMIT = 3
 
-MAX_CANDIDATES = 14
+MAX_CANDIDATES = 24
 TACTICAL_CANDIDATE_LIMIT = 44
 MINIMAX_BRANCH_LIMIT = 6
 
-ROOT_DEEP_SEARCH_LIMIT = 7
+ROOT_DEEP_SEARCH_LIMIT = 12
 FORCING_MOVE_LIMIT = 8
 
 CPUCT = 1.5
@@ -285,6 +285,15 @@ def _tactical_score(
     score = 0.0
 
     captured = board.board[move.to_row][move.to_col]
+    # タダ取り超優先
+    if captured is not None and captured["owner"] != owner:
+        piece_value = TACTICAL_VALUES.get(
+            captured["type"],
+            0,
+        )
+
+        score += piece_value * 2.5
+
     if captured is not None and captured["owner"] != owner:
         score += TACTICAL_VALUES.get(captured["type"], 0) * 5.0
 
@@ -299,6 +308,10 @@ def _tactical_score(
     copied.turn = owner
 
     try:
+        before_score = evaluate_board(
+            board,
+            ai_owner=owner,
+        )
         copied.apply_move(move)
 
         one_ply_score = evaluate_board(
@@ -309,12 +322,38 @@ def _tactical_score(
         # 1手後評価は補助程度
         score += one_ply_score * 0.05
 
-        # 王手は強いが、序盤は雑な王手を抑える
-        if copied.is_in_check(copied.enemy_of(owner)):
-            if _is_opening(board):
-                score += 30.0
+        # 王手評価
+        # 無条件王手加点は禁止。
+        # 詰み・駒得・成り・評価改善がある王手だけ加点する。
+        enemy = copied.enemy_of(owner)
+
+        if copied.is_in_check(enemy):
+            enemy_replies = copied.generate_legal_moves(enemy)
+
+            if not enemy_replies:
+                # 詰み王手
+                score += 999999.0
             else:
-                score += 120.0
+                is_capture = (
+                    captured is not None
+                    and captured["owner"] != owner
+                )
+
+                is_good_check = (
+                    is_capture
+                    or move.promote
+                    or one_ply_score >= before_score + 300
+                )
+
+                if is_good_check:
+                    score += 180.0
+                else:
+                    # 無駄王手は明確に減点
+                    score -= 1500.0
+
+        # 成り超優先
+        if move.promote:
+            score += 120.0
 
     except Exception:
         score -= 999999.0
@@ -386,10 +425,13 @@ def _rank_candidates(
             }
 
             for item in scored:
-                item["score"] += policy_score_map.get(
+                policy_bonus = policy_score_map.get(
                     item["moveId"],
                     0.0,
-                ) * 600.0
+                )
+
+                # policyは補助程度にする
+                item["score"] += policy_bonus * 120.0
 
         except Exception as e:
             print("[MCTS] policy ranking failed:", e)
@@ -582,6 +624,8 @@ def run_mcts(
 
     if not legal_moves:
         return []
+    
+    current_root_score = evaluate_board(root_board, ai_owner=root_owner)
 
     root_candidates = _rank_candidates(
         board=root_board,
@@ -609,6 +653,30 @@ def run_mcts(
         else:
             search_score = raw_score
 
+        enemy = copied.enemy_of(root_owner)
+        is_check = copied.is_in_check(enemy)
+
+        enemy_replies = copied.generate_legal_moves(enemy) if is_check else []
+        is_mate_check = is_check and not enemy_replies
+
+        captured = root_board.board[move.to_row][move.to_col]
+        is_capture = captured is not None and captured["owner"] != root_owner
+
+        # 良い王手判定は rawScore ではなく searchScore で見る
+        # rawScore は「王手した瞬間」だけ高くなりやすいので信用しない
+        is_good_check = (
+            is_mate_check
+            or is_capture
+            or move.promote
+            or search_score >= current_root_score + 300
+        )
+
+        # 無駄王手は searchScore 自体を落とす
+        # ここで落とさないと、教育選択側でまだ選ばれる
+        if is_check and not is_good_check:
+            search_score -= 1200
+            raw_score -= 800
+
         results.append(
             {
                 "move": move,
@@ -623,8 +691,12 @@ def run_mcts(
                 "visitCount": max(1, len(root_candidates) - index),
                 "qValue": round(_score_to_value(int(search_score)), 4),
                 "prior": round(float(prior), 4),
+                "isCheck": bool(is_check),
+                "isGoodCheck": bool(is_good_check),
+                "isMateCheck": bool(is_mate_check),
             }
         )
+
 
     results.sort(
         key=lambda item: (

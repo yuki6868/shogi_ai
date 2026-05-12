@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from ai.board import Move, ShogiBoard
-from ai.move_encoder import move_to_id, move_to_readable
+from shogi_core.board import Move, ShogiBoard
+from shogi_core.move_encoder import move_to_id, move_to_readable
 
 
 PIECE_VALUES = {

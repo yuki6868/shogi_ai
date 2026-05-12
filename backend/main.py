@@ -6,24 +6,24 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from ai.board import ShogiBoard
-from ai.evaluator import evaluate_board, evaluate_moves, score_to_win_rate
-from ai.move_selector import (
+from shogi_core.board import ShogiBoard
+from ai.old_ai.evaluator import evaluate_board, evaluate_moves, score_to_win_rate
+from ai.old_ai.move_selector import (
     select_balance_move,
     select_level_adjusted_move,
     select_mcts_education_move,
     select_strong_move,
 )
-from ai.mcts import run_mcts, MCTS_SIMULATIONS, MCTS_DEPTH_LIMIT, MAX_CANDIDATES
-from ai.move_encoder import legal_moves_to_ids, move_to_id, move_to_dict_with_id
-from ai.policy_dummy import (
+from ai.old_ai.mcts import run_mcts, MCTS_SIMULATIONS, MCTS_DEPTH_LIMIT, MAX_CANDIDATES
+from shogi_core.move_encoder import legal_moves_to_ids, move_to_id, move_to_dict_with_id
+from ai.old_ai.policy_dummy import (
     filter_policy_candidates,
     rank_natural_moves,
     policy_candidates_to_dicts,
 )
 
-from ai.policy_inference import get_policy_inference
-from ai.value_inference import get_value_inference
+from ai.old_ai.policy_inference import get_policy_inference
+from ai.old_ai.value_inference import get_value_inference
 
 
 class AiMoveRequest(BaseModel):

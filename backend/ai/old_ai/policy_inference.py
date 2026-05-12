@@ -6,16 +6,16 @@ from pathlib import Path
 
 import torch
 
-from ai.board import Move, ShogiBoard
-from ai.board_tensor import board_to_full_tensor
-from ai.move_encoder import move_to_id
-from ai.path_config import WORKSPACE_DIR
-from ai.policy_dataset import (
+from shogi_core.board import Move, ShogiBoard
+from shogi_core.board_tensor import board_to_full_tensor
+from shogi_core.move_encoder import move_to_id
+from shogi_core.path_config import WORKSPACE_DIR
+from ai.old_ai.policy_dataset import (
     label_to_move_id,
     policy_output_size,
     move_id_to_label,
 )
-from ai.policy_model import create_policy_model
+from ai.old_ai.policy_model import create_policy_model
 
 
 DEFAULT_POLICY_MODEL_PATH = WORKSPACE_DIR / "models" / "policy_model.pt"
@@ -149,7 +149,7 @@ def policy_ai_candidates_to_dicts(
     legal_moves: list[Move],
     limit: int = 12,
 ) -> list[dict]:
-    from ai.move_encoder import move_to_readable
+    from shogi_core.move_encoder import move_to_readable
 
     policy = get_policy_inference()
 

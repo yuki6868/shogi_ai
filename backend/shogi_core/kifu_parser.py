@@ -4,8 +4,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Optional
 
-from ai.board import BOARD_SIZE, ShogiBoard, Move
-from ai.move_encoder import move_to_id, find_legal_move_by_id
+from shogi_core.board import BOARD_SIZE, ShogiBoard, Move
+from shogi_core.move_encoder import move_to_id, find_legal_move_by_id
 
 
 CSA_TO_PIECE = {

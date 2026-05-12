@@ -5,8 +5,8 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from ai.board import ShogiBoard, Move
-# from ai.value_inference import get_value_inference
+from shogi_core.board import ShogiBoard, Move
+# from ai.old_ai.value_inference import get_value_inference
 
 
 PIECE_VALUES = {

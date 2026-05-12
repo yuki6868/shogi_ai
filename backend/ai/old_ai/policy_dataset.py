@@ -8,18 +8,18 @@ from typing import Optional
 import torch
 from torch.utils.data import Dataset
 
-from ai.board_tensor import board_to_full_tensor
-from ai.kifu_parser import (
+from shogi_core.board_tensor import board_to_full_tensor
+from shogi_core.kifu_parser import (
     ParsedMoveRecord,
     iter_csa_files,
     parse_csa_file,
 )
-from ai.move_encoder import (
+from shogi_core.move_encoder import (
     FILES,
     RANKS,
     DROP_PIECES,
 )
-from ai.path_config import DEFAULT_DATASET_DIR
+from shogi_core.path_config import DEFAULT_DATASET_DIR
 
 MOVE_ID_TO_LABEL: dict[str, int] = {}
 LABEL_TO_MOVE_ID: dict[int, str] = {}

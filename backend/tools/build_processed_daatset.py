@@ -17,9 +17,9 @@ BACKEND_DIR = CURRENT_DIR.parent
 
 sys.path.insert(0, str(BACKEND_DIR))
 
-from ai.kifu_parser import iter_csa_files, parse_csa_file
-from ai.board_tensor import board_to_full_tensor
-from ai.move_encoder import move_to_id
+from shogi_core.kifu_parser import iter_csa_files, parse_csa_file
+from shogi_core.board_tensor import board_to_full_tensor
+from shogi_core.move_encoder import move_to_id
 
 
 # =========================================================
