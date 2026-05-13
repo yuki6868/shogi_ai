@@ -557,6 +557,17 @@ def review_player_move(req: PlayerMoveReviewRequest):
             level_delta = min(level_delta, -0.08)
             quality = "大悪手"
 
+    move_count = len(req.moveHistory) if hasattr(req, "moveHistory") and req.moveHistory else 0
+
+    if move_count < 12:
+        level_delta *= 0.15
+        opening_phase = "序盤のためレベル変動をかなり抑制"
+    elif move_count < 24:
+        level_delta *= 0.4
+        opening_phase = "序盤〜中盤のためレベル変動を抑制"
+    else:
+        opening_phase = "通常のレベル変動"
+
     new_level = max(0.05, min(1.0, player_level + level_delta))
 
     return {
@@ -564,6 +575,8 @@ def review_player_move(req: PlayerMoveReviewRequest):
         "playerLevel": round(player_level, 3),
         "newPlayerLevel": round(new_level, 3),
         "levelDelta": round(level_delta, 3),
+        "openingPhase": opening_phase,
+        "moveCount": move_count,
         "quality": quality,
         "playedMoveId": req.playedMoveId,
         "chosenRank": chosen_rank,
