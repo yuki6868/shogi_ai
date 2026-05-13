@@ -38,8 +38,9 @@ class AiMoveRequest(BaseModel):
     playerHand: list | dict = []
     enemyHand: list | dict = []
     turn: str = "enemy"
-    playerLevel: float = 0.35
+    playerLevel: float = 0.60
     aiOwner: str = "enemy"
+    moveHistory: list = []
 
 class PlayerMoveReviewRequest(AiMoveRequest):
     playedMoveId: str = ""
@@ -387,18 +388,106 @@ def ai_move_strong(req: AiMoveRequest):
         }
 
     player_level = max(0.05, min(1.0, float(req.playerLevel)))
+    move_count = len(req.moveHistory or [])
+
+    # 目標勝率を60%寄りにする。
+    # さらに終盤は弱すぎる手を選ばないように落とし幅を小さくする。
+    if move_count < 16:
+        effective_player_level = max(player_level, 0.60)
+        max_drop = int(180 + (1.0 - effective_player_level) * 1200)
+        opening_control = "序盤のためAI強度を60%以上に固定"
+
+    elif move_count < 28:
+        effective_player_level = max(player_level, 0.60)
+        max_drop = int(160 + (1.0 - effective_player_level) * 1000)
+        opening_control = "序盤〜中盤のためAI強度を60%以上に固定"
+
+    elif move_count < 60:
+        effective_player_level = max(player_level, 0.58)
+        max_drop = int(140 + (1.0 - effective_player_level) * 850)
+        opening_control = "中盤のためAI強度を58%以上に固定"
+
+    else:
+        # 終盤は弱すぎると一気に崩れるので、かなり最善寄りにする
+        effective_player_level = max(player_level, 0.62)
+        max_drop = int(100 + (1.0 - effective_player_level) * 550)
+        opening_control = "終盤のためAIを最善寄りに補正"
 
     best_score = int(candidates[0].score)
 
-    # playerLevel が低いほど、最善手から大きく落としてもよい
-    # playerLevel が高いほど、ほぼ最善手を選ぶ
-    max_drop = int(250 + (1.0 - player_level) * 2200)
+    # 明らかな詰みは接戦制御より優先する。
+    # YaneuraOu の mate 1 は 99999、mate 3 は 99997 に変換されている。
+    FORCE_MATE_SCORE_THRESHOLD = 99990
+
+    forced_mate_candidates = [
+        c for c in candidates
+        if int(c.score) >= FORCE_MATE_SCORE_THRESHOLD
+    ]
+
+    if forced_mate_candidates:
+        selected = max(forced_mate_candidates, key=lambda c: int(c.score))
+
+        for item in candidates:
+            item.is_best = item.usi == selected.usi
+
+        ai_win_rate = score_to_win_rate(int(selected.score))
+
+        shown_candidates = [
+            {
+                **yaneuraou_candidate_to_dict(item),
+                "selected": item.usi == selected.usi,
+                "bestScore": best_score,
+                "targetScore": best_score,
+                "maxDrop": 0,
+                "scoreDropFromBest": int(best_score - int(item.score)),
+            }
+            for item in candidates[:8]
+        ]
+
+        return {
+            "ok": True,
+            "mode": "YANEURAOU USI depth 8 MultiPV 8 + FORCE SHORT MATE",
+            "selectedBy": "forced_short_mate",
+            "playerLevel": round(player_level, 3),
+            "effectivePlayerLevel": 1.0,
+            "openingControl": "1手詰め・3手詰め級のため即詰みを優先",
+            "moveCount": move_count,
+
+            "moveId": selected.move_id,
+            "move": move_to_dict_with_id(selected.move),
+
+            "score": int(selected.score),
+            "searchScore": int(selected.score),
+            "rawScore": int(selected.score),
+
+            "aiWinRate": ai_win_rate,
+            "playerWinRate": round(100 - ai_win_rate, 1),
+
+            "legalMoveCount": len(moves),
+            "engineCandidateCount": len(candidates),
+            "enginePath": str(engine.engine_path),
+
+            "bestmoveUsi": selected.usi,
+            "selectedUsi": selected.usi,
+            "pv": selected.pv[:8],
+
+            "bestScore": best_score,
+            "targetScore": best_score,
+            "maxDrop": 0,
+            "scoreDropFromBest": 0,
+            "isBestMove": True,
+
+            "policyCandidates": shown_candidates,
+            "mctsCandidates": shown_candidates,
+        }    
 
     # AIが有利なときは、勝ちすぎない評価値を狙う
     # AIが不利なときは、無理に弱い手を選ばず最善寄りにする
     if best_score > 0:
-        target_score = int(best_score * player_level)
+        # 50%ではなく、最低60%程度を目標にする
+        target_score = int(best_score * max(effective_player_level, 0.60))
     else:
+        # 不利なときは手を抜かず、最善手寄りにする
         target_score = best_score
 
     selected = select_competitive_move(
@@ -438,6 +527,9 @@ def ai_move_strong(req: AiMoveRequest):
         "mode": "YANEURAOU USI depth 8 MultiPV 8 + COMPETITIVE CONTROL",
         "selectedBy": "competitive_control",
         "playerLevel": round(player_level, 3),
+        "effectivePlayerLevel": round(effective_player_level, 3),
+        "openingControl": opening_control,
+        "moveCount": move_count,
 
         "moveId": selected.move_id,
         "move": move_to_dict_with_id(selected.move),
@@ -557,18 +649,62 @@ def review_player_move(req: PlayerMoveReviewRequest):
             level_delta = min(level_delta, -0.08)
             quality = "大悪手"
 
-    move_count = len(req.moveHistory) if hasattr(req, "moveHistory") and req.moveHistory else 0
+    move_count = len(req.moveHistory or [])
 
-    if move_count < 12:
-        level_delta *= 0.15
-        opening_phase = "序盤のためレベル変動をかなり抑制"
-    elif move_count < 24:
-        level_delta *= 0.4
-        opening_phase = "序盤〜中盤のためレベル変動を抑制"
+    # 序盤は、良い手を指してもレベルを上げない。
+    # ただし、すごく弱い手だけは下げる。
+    OPENING_MIN_LEVEL = 0.35
+
+    if move_count < 16:
+        # 序盤は良い手では上げない。
+        # ただし弱い手なら下げる。下限は0.35。
+        if level_delta > 0:
+            level_delta = 0.0
+            opening_phase = "序盤のためレベル上昇なし"
+        elif level_delta < 0 and score_drop >= 700:
+            if score_drop >= 1200:
+                level_delta = -0.08
+                opening_phase = "序盤の大悪手のため大きくレベル低下"
+            elif score_drop >= 900:
+                level_delta = -0.05
+                opening_phase = "序盤の悪手のためレベル低下"
+            else:
+                level_delta = -0.03
+                opening_phase = "序盤の疑問手のため少しレベル低下"
+        else:
+            level_delta = 0.0
+            opening_phase = "序盤のためレベル維持"
+
+    elif move_count < 28:
+        # 序盤〜中盤も良い手では上げない。
+        # 悪い手なら下げる。
+        if level_delta > 0:
+            level_delta = 0.0
+            opening_phase = "序盤〜中盤のためレベル上昇なし"
+        elif level_delta < 0 and score_drop >= 500:
+            if score_drop >= 1000:
+                level_delta = -0.07
+                opening_phase = "序盤〜中盤の大きな見落としのためレベル低下"
+            elif score_drop >= 700:
+                level_delta = -0.05
+                opening_phase = "序盤〜中盤の悪手のためレベル低下"
+            else:
+                level_delta = -0.03
+                opening_phase = "序盤〜中盤の疑問手のため少しレベル低下"
+        else:
+            level_delta = 0.0
+            opening_phase = "序盤〜中盤のためレベル維持"
+
     else:
         opening_phase = "通常のレベル変動"
 
-    new_level = max(0.05, min(1.0, player_level + level_delta))
+    new_level = player_level + level_delta
+
+    # 序盤は0.35より下げない
+    if move_count < 28:
+        new_level = max(OPENING_MIN_LEVEL, new_level)
+
+    new_level = max(0.05, min(1.0, new_level))
 
     return {
         "ok": True,

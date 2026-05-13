@@ -689,12 +689,13 @@
     let playerHand = [];
     let enemyHand = [];
     let legalMovesCache = [];
+    let moveHistory = [];
 
     let humanSide = "player"; // player=先手, enemy=後手
     let aiSide = "enemy";
     let boardFlipped = false;
 
-    let playerLevel = 0.35;
+    let playerLevel = 0.60;
     let currentEvalScore = 0;
 
     let lastMove = null;
@@ -766,6 +767,11 @@
 
     function rememberLastMove(move) {
       lastMove = move;
+      moveHistory.push({
+        ...move,
+        turn: move.owner,
+        index: moveHistory.length + 1
+      });
     }
 
     function isSameSquare(a, row, col) {
@@ -2037,8 +2043,9 @@
       selectedHandPiece = null;
       playerHand = [];
       enemyHand = [];
-      playerLevel = 0.35;
+      playerLevel = 0.60;
       currentEvalScore = 0;
+      moveHistory = [];
 
       clearLastMove();
 
@@ -2063,9 +2070,11 @@
         enemyHand,
         turn,
         playerLevel,
-        aiOwner: aiSide
+        aiOwner: aiSide,
+        moveHistory
       };
     }
+
     async function fetchPolicyStatus() {
       try {
         const res = await fetch("http://127.0.0.1:8000/api/policy-status");
@@ -2158,7 +2167,8 @@
         turn: turn,
         playerLevel: playerLevel,
         aiOwner: aiSide,
-        playedMoveId: legalMove.moveId
+        playedMoveId: legalMove.moveId,
+        moveHistory: cloneForApi(moveHistory)
       };
     }
 
