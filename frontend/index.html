@@ -577,8 +577,8 @@
 
       <div class="hands">
         <div class="hand-box">
-          <div class="hand-title">後手の持ち駒</div>
-          <div id="enemyHand"></div>
+          <div id="topHandTitle" class="hand-title">後手の持ち駒</div>
+          <div id="topHand"></div>
         </div>
       </div>
 
@@ -594,8 +594,8 @@
 
       <div class="hands">
         <div class="hand-box">
-          <div class="hand-title">先手の持ち駒</div>
-          <div id="playerHand"></div>
+          <div id="bottomHandTitle" class="hand-title">先手の持ち駒</div>
+          <div id="bottomHand"></div>
         </div>
       </div>
     </section>
@@ -1551,8 +1551,26 @@
     }
 
     function renderHands() {
-      renderHand("player", playerHand, document.getElementById("playerHand"));
-      renderHand("enemy", enemyHand, document.getElementById("enemyHand"));
+      const topHandTitle = document.getElementById("topHandTitle");
+      const bottomHandTitle = document.getElementById("bottomHandTitle");
+      const topHand = document.getElementById("topHand");
+      const bottomHand = document.getElementById("bottomHand");
+
+      if (!topHandTitle || !bottomHandTitle || !topHand || !bottomHand) return;
+
+      if (!boardFlipped) {
+        topHandTitle.textContent = "後手の持ち駒";
+        bottomHandTitle.textContent = "先手の持ち駒";
+
+        renderHand("enemy", enemyHand, topHand);
+        renderHand("player", playerHand, bottomHand);
+      } else {
+        topHandTitle.textContent = "先手の持ち駒";
+        bottomHandTitle.textContent = "後手の持ち駒";
+
+        renderHand("player", playerHand, topHand);
+        renderHand("enemy", enemyHand, bottomHand);
+      }
     }
 
     function renderHand(owner, hand, element) {
