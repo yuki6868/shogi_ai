@@ -685,6 +685,7 @@
     let turn = "player";
     let selected = null;
     let selectedHandPiece = null;
+    let selectionRequestId = 0;
     let playerHand = [];
     let enemyHand = [];
     let legalMovesCache = [];
@@ -1132,6 +1133,21 @@
       return [];
     }
 
+    async function findLegalMoveForSelectedAsync(row, col) {
+      let legalMove = findLegalMoveForSelected(row, col);
+
+      if (legalMove) {
+        return legalMove;
+      }
+
+      // 合法手キャッシュがまだ空・古い可能性があるので、Pythonから取り直す
+      await fetchLegalMovesFromPython();
+
+      legalMove = findLegalMoveForSelected(row, col);
+
+      return legalMove;
+    }
+
     function findLegalMoveForSelected(row, col) {
       const moves = findLegalMovesForSelected(row, col);
       return moves[0] || null;
@@ -1173,24 +1189,27 @@
     }
 
     async function chooseLegalMoveForSelected(row, col) {
-      const moves = findLegalMovesForSelected(row, col);
+      let moves = findLegalMovesForSelected(row, col);
+
+      if (moves.length === 0) {
+        await fetchLegalMovesFromPython();
+        moves = findLegalMovesForSelected(row, col);
+      }
 
       if (moves.length === 0) {
         return null;
       }
 
-      const promoteMove = moves.find((move) => move.promote);
-      const normalMove = moves.find((move) => !move.promote);
+      if (moves.length === 1) {
+        return moves[0];
+      }
 
-      if (promoteMove && normalMove) {
-        const movingPiece = selected
-          ? board[selected.row][selected.col]
-          : null;
+      const promoteMove = moves.find((move) => move.promote === true);
+      const nonPromoteMove = moves.find((move) => move.promote === false);
 
-        const pieceName = movingPiece ? movingPiece.type : "この駒";
-        const shouldPromote = await askPromotion(pieceName);
-
-        return shouldPromote ? promoteMove : normalMove;
+      if (promoteMove && nonPromoteMove) {
+        const shouldPromote = window.confirm("成りますか？");
+        return shouldPromote ? promoteMove : nonPromoteMove;
       }
 
       return moves[0];
@@ -1659,19 +1678,12 @@
           return;
         }
 
-        selected = { row, col };
-        await fetchLegalMovesFromPython();
+        await selectBoardPiece(row, col, clickedPiece);
+        return;
+      }
 
-        if (!hasAnyLegalMoveFromSquare(row, col)) {
-          selected = null;
-          clearLegalMovesCache();
-          setStatus(`${clickedPiece.type}には合法手がありません。`);
-          renderBoard();
-          return;
-        }
-
-        setStatus(`${clickedPiece.type}を選択しました。移動先をクリックしてください。`);
-        renderBoard();
+      if (clickedPiece && clickedPiece.owner === turn) {
+        await selectBoardPiece(row, col, clickedPiece);
         return;
       }
 
@@ -1680,7 +1692,11 @@
         return;
       }
 
-      const legalMove = await chooseLegalMoveForSelected(row, col);
+      let legalMove = await chooseLegalMoveForSelected(row, col);
+
+      if (!legalMove) {
+        legalMove = await findLegalMoveForSelectedAsync(row, col);
+      }
 
       if (!legalMove) {
         setStatus("その場所には動けません。Python判定で合法手ではありません。");
@@ -1693,9 +1709,12 @@
       movePiece(selected.row, selected.col, row, col, legalMove.promote);
 
       selected = null;
-      clearLegalMovesCache();
+      ++selectionRequestId;
 
       switchTurn();
+
+      await fetchLegalMovesFromPython();
+
       renderBoard();
       await refreshEvaluation();
 
@@ -1707,6 +1726,39 @@
       if (isAiTurn()) {
         setTimeout(requestAiMove, 500);
       }
+    }
+    
+    async function selectBoardPiece(row, col, clickedPiece) {
+      selected = { row, col };
+      selectedHandPiece = null;
+
+      const requestId = ++selectionRequestId;
+
+      setStatus(`${clickedPiece.type}を選択しました。合法手を確認しています...`);
+      renderBoard();
+
+      await fetchLegalMovesFromPython();
+
+      if (requestId !== selectionRequestId) {
+        return;
+      }
+
+      const selectableMoves = legalMovesCache.filter((move) => {
+        return (
+          !move.drop &&
+          move.from &&
+          move.from.row === row &&
+          move.from.col === col
+        );
+      });
+
+      if (selectableMoves.length === 0) {
+        setStatus(`${clickedPiece.type}は現在動かせません。別の駒を選んでください。`);
+      } else {
+        setStatus(`${clickedPiece.type}を選択しました。移動先をクリックしてください。`);
+      }
+
+      renderBoard();
     }
 
     function movePiece(fromRow, fromCol, toRow, toCol, forcePromote = false) {
@@ -1749,7 +1801,7 @@
     async function handleDropPiece(row, col) {
       const beforeScore = currentEvalScore;
 
-      const legalMove = findLegalMoveForSelected(row, col);
+      const legalMove = await findLegalMoveForSelectedAsync(row, col);
 
       if (!legalMove) {
         setStatus("その場所には打てません。Python判定で合法手ではありません。");
@@ -1899,6 +1951,7 @@
     function clearSelection() {
       selected = null;
       selectedHandPiece = null;
+      ++selectionRequestId;
       clearLegalMovesCache();
       setStatus("選択を解除しました。駒をクリックしてください。");
       renderBoard();
