@@ -314,7 +314,7 @@ def ai_move_mcts(req: AiMoveRequest):
 
 @app.post("/api/ai-move-strong")
 def ai_move_strong(req: AiMoveRequest):
-    print("=== STRONG AI ROUTE: CSHOGI 2PLY ===")
+    print("=== STRONG AI ROUTE: CSHOGI 3PLY BEAM SEARCH ===")
 
     shogi = ShogiBoard.from_html_state(req.model_dump())
 
@@ -345,7 +345,7 @@ def ai_move_strong(req: AiMoveRequest):
 
     return {
         "ok": True,
-        "mode": "CSHOGI 2PLY MATERIAL SEARCH",
+        "mode": "CSHOGI 3PLY BEAM SEARCH",
         "selectedBy": "best_score_after_opponent_reply",
 
         "moveId": selected.move_id,

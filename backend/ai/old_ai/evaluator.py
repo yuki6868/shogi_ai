@@ -55,10 +55,10 @@ def evaluate_board(shogi: ShogiBoard, ai_owner: str = "enemy") -> int:
             )
 
     for piece in shogi.enemy_hand:
-        score += int(PIECE_VALUES.get(piece, 0) * 0.9)
+        score += owner_sign("enemy", ai_owner) * int(PIECE_VALUES.get(piece, 0) * 0.9)
 
     for piece in shogi.player_hand:
-        score -= int(PIECE_VALUES.get(piece, 0) * 0.9)
+        score += owner_sign("player", ai_owner) * int(PIECE_VALUES.get(piece, 0) * 0.9)
 
     score += king_safety_score(shogi, ai_owner)
     score -= king_safety_score(shogi, shogi.enemy_of(ai_owner))
