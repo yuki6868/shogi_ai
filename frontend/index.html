@@ -1097,7 +1097,15 @@
 
       const data = await res.json();
       legalMovesCache = data.moves || [];
-      updatePolicyCandidatesUI(data.policyCandidates || []);
+
+      // 重要:
+      // /api/legal-moves は合法手確認用なので、AI候補手表示を上書きしない。
+      // ここで updatePolicyCandidatesUI([]) すると、
+      // AIの候補手が一瞬表示された後、先手番の合法手確認で消える。
+      if (data.policyCandidates && data.policyCandidates.length > 0) {
+        updatePolicyCandidatesUI(data.policyCandidates);
+      }
+
       return legalMovesCache;
     }
 
