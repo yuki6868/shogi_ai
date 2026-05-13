@@ -1737,7 +1737,7 @@
         return;
       }
 
-      await reviewPlayerMoveBeforeApply(legalMove);
+      const reviewPayload = buildPlayerMoveReviewPayload(legalMove);
 
       movePiece(selected.row, selected.col, row, col, legalMove.promote);
 
@@ -1749,7 +1749,13 @@
       await fetchLegalMovesFromPython();
 
       renderBoard();
-      await refreshEvaluation();
+
+      const reviewPromise = reviewPlayerMoveAfterApply(reviewPayload);
+      const evaluationPromise = refreshEvaluation();
+
+      Promise.allSettled([reviewPromise, evaluationPromise]).then(() => {
+        renderBoard();
+      });
 
       // updatePlayerLevelByMove(beforeScore, currentEvalScore);
 
@@ -1841,7 +1847,7 @@
         return;
       }
 
-      await reviewPlayerMoveBeforeApply(legalMove);
+      const reviewPayload = buildPlayerMoveReviewPayload(legalMove);
 
       const droppedPiece = {
         type: selectedHandPiece.type,
@@ -1873,7 +1879,13 @@
 
       switchTurn();
       renderBoard();
-      await refreshEvaluation();
+
+      const reviewPromise = reviewPlayerMoveAfterApply(reviewPayload);
+      const evaluationPromise = refreshEvaluation();
+
+      Promise.allSettled([reviewPromise, evaluationPromise]).then(() => {
+        renderBoard();
+      });
 
       // updatePlayerLevelByMove(beforeScore, currentEvalScore);
 
@@ -2116,21 +2128,27 @@
       console.log("playerLevel:", playerLevel, "improvement:", improvement);
     }
 
-    async function reviewPlayerMoveBeforeApply(legalMove) {
-      if (!legalMove || !legalMove.moveId) {
-        console.warn("指し手レビュー不可: moveId がありません", legalMove);
-        return null;
-      }
+    function cloneForApi(value) {
+      return JSON.parse(JSON.stringify(value));
+    }
 
-      const payload = {
-        board: board,
-        playerHand: playerHand,
-        enemyHand: enemyHand,
+    function buildPlayerMoveReviewPayload(legalMove) {
+      return {
+        board: cloneForApi(board),
+        playerHand: cloneForApi(playerHand),
+        enemyHand: cloneForApi(enemyHand),
         turn: turn,
         playerLevel: playerLevel,
         aiOwner: aiSide,
         playedMoveId: legalMove.moveId
       };
+    }
+
+    async function reviewPlayerMoveAfterApply(payload) {
+      if (!payload || !payload.playedMoveId) {
+        console.warn("指し手レビュー不可: moveId がありません", payload);
+        return null;
+      }
 
       try {
         const res = await fetch("http://127.0.0.1:8000/api/review-player-move", {
