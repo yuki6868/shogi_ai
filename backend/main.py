@@ -319,6 +319,18 @@ def ai_move_strong(req: AiMoveRequest):
     print("=== STRONG AI ROUTE: YANEURAOU USI ===")
 
     shogi = ShogiBoard.from_html_state(req.model_dump())
+    moves = shogi.generate_legal_moves(req.turn)
+
+    if not moves:
+        return {
+            "ok": False,
+            "reasonCode": "NO_LEGAL_MOVES",
+            "reason": "合法手がありません",
+            "move": None,
+            "mode": "YANEURAOU USI",
+            "legalMoveCount": 0,
+        }
+
     engine = get_yaneuraou_engine()
 
     try:
@@ -331,17 +343,21 @@ def ai_move_strong(req: AiMoveRequest):
     except Exception as exc:
         return {
             "ok": False,
+            "reasonCode": "ENGINE_ERROR",
             "reason": str(exc),
             "move": None,
             "mode": "YANEURAOU USI",
+            "legalMoveCount": len(moves),
         }
 
     if not candidates:
         return {
             "ok": False,
+            "reasonCode": "ENGINE_NO_CANDIDATES",
             "reason": "やねうら王から候補手を取得できませんでした",
             "move": None,
             "mode": "YANEURAOU USI",
+            "legalMoveCount": len(moves),
         }
 
     selected = candidates[0]
@@ -370,7 +386,8 @@ def ai_move_strong(req: AiMoveRequest):
         "aiWinRate": ai_win_rate,
         "playerWinRate": round(100 - ai_win_rate, 1),
 
-        "legalMoveCount": len(candidates),
+        "legalMoveCount": len(moves),
+        "engineCandidateCount": len(candidates),
         "enginePath": str(engine.engine_path),
         "bestmoveUsi": selected.usi,
         "pv": selected.pv[:8],

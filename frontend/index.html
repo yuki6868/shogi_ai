@@ -1232,47 +1232,72 @@
     
     async function requestAiMove() {
       if (!gameStarted || gameOver) return;
-      if (gameOver || !isAiTurn()) return;
+      if (!isAiTurn()) return;
 
       const payload = {
         board: board,
         playerHand: playerHand,
         enemyHand: enemyHand,
         turn: turn,
-        playerLevel: playerLevel
+        playerLevel: playerLevel,
+        aiOwner: aiSide
       };
 
       console.log("AIへ送信:", payload);
 
-      const res = await fetch("http://127.0.0.1:8000/api/ai-move-strong", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(payload)
-      });
+      let data = null;
 
-      if (!res.ok) {
-        const errorText = await res.text();
-        console.error("AI APIエラー:", res.status, errorText);
-        setStatus(`AI APIエラー: ${res.status}`);
+      try {
+        const res = await fetch("http://127.0.0.1:8000/api/ai-move-strong", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) {
+          const errorText = await res.text();
+          console.error("AI APIエラー:", res.status, errorText);
+          setStatus(`AI APIエラー: ${res.status}`);
+          return;
+        }
+
+        data = await res.json();
+      } catch (error) {
+        console.error("AI通信エラー:", error);
+        setStatus(`AI通信エラー: ${error.message}`);
         return;
       }
-
-      const data = await res.json();
 
       if (gameOver) return;
 
       if (!data.ok || !data.move) {
-        await handleNoLegalMoves(turn);
+        console.error("AI応答エラー:", data);
+
+        if (data.reasonCode === "NO_LEGAL_MOVES") {
+          await handleNoLegalMoves(turn);
+          return;
+        }
+
+        setStatus(`AIの手を取得できませんでした: ${data.reason || "不明なエラー"}`);
         return;
       }
 
       updatePolicyCandidatesUI(data.policyCandidates || [], data.moveId);
 
       applyAiMove(data.move);
-      
+
       updateEvaluationUI(data);
+
+      await fetchLegalMovesFromPython();
+
+      const ended = await checkGameEndOrContinue();
+      if (ended) return;
+
+      if (!gameOver) {
+        startTurnTimer();
+      }
     }
 
     function updatePolicyCandidatesUI(candidates, selectedMoveId = null) {
@@ -1727,7 +1752,7 @@
         setTimeout(requestAiMove, 500);
       }
     }
-    
+
     async function selectBoardPiece(row, col, clickedPiece) {
       selected = { row, col };
       selectedHandPiece = null;

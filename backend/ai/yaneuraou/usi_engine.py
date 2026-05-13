@@ -100,6 +100,7 @@ class YaneuraOuUSIEngine:
     def _read_until_locked(self, marker: str):
         while True:
             line = self._read_line_locked()
+            print("[YaneuraOu]", line)
             if line.strip() == marker or line.startswith(marker):
                 return
 
@@ -124,7 +125,8 @@ class YaneuraOuUSIEngine:
 
         try:
             move = usi_to_move(shogi, usi)
-        except Exception:
+        except Exception as exc:
+            print("[YaneuraOu] USI move parse failed:", usi, exc)
             return None
 
         return YaneuraOuCandidate(
@@ -147,6 +149,8 @@ class YaneuraOuUSIEngine:
 
             sfen = shogi_to_sfen(shogi, turn=turn)
 
+            print("[YaneuraOu] position sfen", sfen)
+
             self._send_locked(f"position sfen {sfen}")
             self._send_locked(f"go depth {depth}")
 
@@ -155,6 +159,7 @@ class YaneuraOuUSIEngine:
 
             while True:
                 line = self._read_line_locked()
+                print("[YaneuraOu]", line)
 
                 if line.startswith("bestmove"):
                     parts = line.split()
@@ -168,20 +173,46 @@ class YaneuraOuUSIEngine:
 
             candidates = [latest[k] for k in sorted(latest)]
 
+            if bestmove_usi and bestmove_usi not in ("resign", "win", "none"):
+                exists = any(c.usi == bestmove_usi for c in candidates)
+
+                if not exists:
+                    try:
+                        bestmove = usi_to_move(shogi, bestmove_usi)
+                        candidates.insert(
+                            0,
+                            YaneuraOuCandidate(
+                                usi=bestmove_usi,
+                                move=bestmove,
+                                move_id=move_to_id(bestmove),
+                                score=0,
+                                depth=depth,
+                                multipv=1,
+                                pv=[bestmove_usi],
+                                is_best=True,
+                            )
+                        )
+                    except Exception as exc:
+                        print("[YaneuraOu] bestmove parse failed:", bestmove_usi, exc)
+
             for c in candidates:
                 c.is_best = c.usi == bestmove_usi
 
             if candidates and not any(c.is_best for c in candidates):
                 candidates[0].is_best = True
 
+            candidates.sort(key=lambda c: (not c.is_best, c.multipv))
+
             return candidates
 
 
 def candidate_to_dict(candidate: YaneuraOuCandidate) -> dict:
+    move_dict = move_to_dict_with_id(candidate.move)
+
     return {
         "moveId": candidate.move_id,
         "usi": candidate.usi,
-        "moveText": move_to_dict_with_id(candidate.move).get("moveText", candidate.move_id),
+        "moveText": move_dict.get("moveText", candidate.move_id),
         "score": int(candidate.score),
         "searchScore": int(candidate.score),
         "rawScore": int(candidate.score),
@@ -190,7 +221,7 @@ def candidate_to_dict(candidate: YaneuraOuCandidate) -> dict:
         "multipv": candidate.multipv,
         "pv": candidate.pv[:8],
         "isBest": candidate.is_best,
-        "move": candidate.move.to_dict(),
+        "move": move_dict,
     }
 
 
