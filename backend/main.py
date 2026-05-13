@@ -30,6 +30,8 @@ from ai.strong_ai.strong_engine import StrongEngine
 from ai.yaneuraou.usi_engine import candidate_to_dict as yaneuraou_candidate_to_dict
 from ai.yaneuraou.usi_engine import get_yaneuraou_engine
 
+from ai.competitive.competitive_selector import select_competitive_move
+
 
 class AiMoveRequest(BaseModel):
     board: list
@@ -316,7 +318,14 @@ def ai_move_mcts(req: AiMoveRequest):
 
 @app.post("/api/ai-move-strong")
 def ai_move_strong(req: AiMoveRequest):
-    print("=== STRONG AI ROUTE: YANEURAOU USI ===")
+
+    print("====================================")
+    print("AI MOVE STRONG REQUEST")
+    print(f"turn         : {req.turn}")
+    print(f"aiOwner      : {req.aiOwner}")
+    print(f"playerLevel  : {req.playerLevel}")
+    print("====================================")
+    # print("=== STRONG AI ROUTE: YANEURAOU USI + COMPETITIVE CONTROL ===")
 
     shogi = ShogiBoard.from_html_state(req.model_dump())
     moves = shogi.generate_legal_moves(req.turn)
@@ -327,7 +336,7 @@ def ai_move_strong(req: AiMoveRequest):
             "reasonCode": "NO_LEGAL_MOVES",
             "reason": "合法手がありません",
             "move": None,
-            "mode": "YANEURAOU USI",
+            "mode": "YANEURAOU USI + COMPETITIVE",
             "legalMoveCount": 0,
         }
 
@@ -346,7 +355,7 @@ def ai_move_strong(req: AiMoveRequest):
             "reasonCode": "ENGINE_ERROR",
             "reason": str(exc),
             "move": None,
-            "mode": "YANEURAOU USI",
+            "mode": "YANEURAOU USI + COMPETITIVE",
             "legalMoveCount": len(moves),
         }
 
@@ -356,25 +365,62 @@ def ai_move_strong(req: AiMoveRequest):
             "reasonCode": "ENGINE_NO_CANDIDATES",
             "reason": "やねうら王から候補手を取得できませんでした",
             "move": None,
-            "mode": "YANEURAOU USI",
+            "mode": "YANEURAOU USI + COMPETITIVE",
             "legalMoveCount": len(moves),
         }
 
-    selected = candidates[0]
-    selected.is_best = True
+    player_level = max(0.05, min(1.0, float(req.playerLevel)))
+
+    best_score = int(candidates[0].score)
+
+    # playerLevel が低いほど、最善手から大きく落としてもよい
+    # playerLevel が高いほど、ほぼ最善手を選ぶ
+    max_drop = int(250 + (1.0 - player_level) * 2200)
+
+    # AIが有利なときは、勝ちすぎない評価値を狙う
+    # AIが不利なときは、無理に弱い手を選ばず最善寄りにする
+    if best_score > 0:
+        target_score = int(best_score * player_level)
+    else:
+        target_score = best_score
+
+    selected = select_competitive_move(
+        candidates=candidates,
+        target_score=target_score,
+        max_drop=max_drop,
+    )
+
+    print("----------- COMPETITIVE RESULT -----------")
+    print(f"best score      : {candidates[0].score}")
+    print(f"selected score  : {selected.score}")
+    print(f"selected usi    : {selected.usi}")
+    print(f"score drop      : {candidates[0].score - selected.score}")
+    print("------------------------------------------")
+
+    for item in candidates:
+        item.is_best = item.usi == candidates[0].usi
+
+    selected.is_best = selected.usi == candidates[0].usi
 
     ai_win_rate = score_to_win_rate(int(selected.score))
 
     shown_candidates = [
-        yaneuraou_candidate_to_dict(item)
+        {
+            **yaneuraou_candidate_to_dict(item),
+            "selected": item.usi == selected.usi,
+            "bestScore": best_score,
+            "targetScore": target_score,
+            "maxDrop": max_drop,
+            "scoreDropFromBest": int(best_score - int(item.score)),
+        }
         for item in candidates[:8]
     ]
 
     return {
         "ok": True,
-        "mode": "YANEURAOU USI depth 8 MultiPV 8",
-        "selectedBy": "yaneuraou_bestmove",
-        "playerLevel": round(req.playerLevel, 3),
+        "mode": "YANEURAOU USI depth 8 MultiPV 8 + COMPETITIVE CONTROL",
+        "selectedBy": "competitive_control",
+        "playerLevel": round(player_level, 3),
 
         "moveId": selected.move_id,
         "move": move_to_dict_with_id(selected.move),
@@ -389,8 +435,16 @@ def ai_move_strong(req: AiMoveRequest):
         "legalMoveCount": len(moves),
         "engineCandidateCount": len(candidates),
         "enginePath": str(engine.engine_path),
-        "bestmoveUsi": selected.usi,
+
+        "bestmoveUsi": candidates[0].usi,
+        "selectedUsi": selected.usi,
         "pv": selected.pv[:8],
+
+        "bestScore": best_score,
+        "targetScore": target_score,
+        "maxDrop": max_drop,
+        "scoreDropFromBest": int(best_score - int(selected.score)),
+        "isBestMove": selected.is_best,
 
         "policyCandidates": shown_candidates,
         "mctsCandidates": shown_candidates,
