@@ -1737,7 +1737,7 @@
         return;
       }
 
-      const beforeScore = currentEvalScore;
+      await reviewPlayerMoveBeforeApply(legalMove);
 
       movePiece(selected.row, selected.col, row, col, legalMove.promote);
 
@@ -1751,7 +1751,7 @@
       renderBoard();
       await refreshEvaluation();
 
-      updatePlayerLevelByMove(beforeScore, currentEvalScore);
+      // updatePlayerLevelByMove(beforeScore, currentEvalScore);
 
       const ended = await checkGameEndOrContinue();
       if (ended) return;
@@ -1832,7 +1832,7 @@
     }
 
     async function handleDropPiece(row, col) {
-      const beforeScore = currentEvalScore;
+      // const beforeScore = currentEvalScore;
 
       const legalMove = await findLegalMoveForSelectedAsync(row, col);
 
@@ -1840,6 +1840,8 @@
         setStatus("その場所には打てません。Python判定で合法手ではありません。");
         return;
       }
+
+      await reviewPlayerMoveBeforeApply(legalMove);
 
       const droppedPiece = {
         type: selectedHandPiece.type,
@@ -1873,7 +1875,7 @@
       renderBoard();
       await refreshEvaluation();
 
-      updatePlayerLevelByMove(beforeScore, currentEvalScore);
+      // updatePlayerLevelByMove(beforeScore, currentEvalScore);
 
       const ended = await checkGameEndOrContinue();
       if (ended) return;
@@ -2112,6 +2114,50 @@
       playerLevel = Math.max(0.05, Math.min(1.0, playerLevel));
 
       console.log("playerLevel:", playerLevel, "improvement:", improvement);
+    }
+
+    async function reviewPlayerMoveBeforeApply(legalMove) {
+      if (!legalMove || !legalMove.moveId) {
+        console.warn("指し手レビュー不可: moveId がありません", legalMove);
+        return null;
+      }
+
+      const payload = {
+        board: board,
+        playerHand: playerHand,
+        enemyHand: enemyHand,
+        turn: turn,
+        playerLevel: playerLevel,
+        aiOwner: aiSide,
+        playedMoveId: legalMove.moveId
+      };
+
+      try {
+        const res = await fetch("http://127.0.0.1:8000/api/review-player-move", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) {
+          console.error("指し手レビューAPIエラー:", res.status, await res.text());
+          return null;
+        }
+
+        const data = await res.json();
+
+        if (data.ok && typeof data.newPlayerLevel === "number") {
+          playerLevel = Math.max(0.05, Math.min(1.0, data.newPlayerLevel));
+          console.log("PLAYER MOVE REVIEW:", data);
+        }
+
+        return data;
+      } catch (error) {
+        console.error("指し手レビュー通信エラー:", error);
+        return null;
+      }
     }
 
     async function refreshEvaluation() {

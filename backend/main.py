@@ -41,6 +41,9 @@ class AiMoveRequest(BaseModel):
     playerLevel: float = 0.35
     aiOwner: str = "enemy"
 
+class PlayerMoveReviewRequest(AiMoveRequest):
+    playedMoveId: str = ""
+
 
 app = FastAPI()
 
@@ -319,11 +322,25 @@ def ai_move_mcts(req: AiMoveRequest):
 @app.post("/api/ai-move-strong")
 def ai_move_strong(req: AiMoveRequest):
 
+    raw_level = float(req.playerLevel)
+
+    if raw_level >= 0.90:
+        level_name = "プロ"
+    elif raw_level >= 0.75:
+        level_name = "上級"
+    elif raw_level >= 0.55:
+        level_name = "中級"
+    elif raw_level >= 0.35:
+        level_name = "初級"
+    else:
+        level_name = "初心者"
+
     print("====================================")
     print("AI MOVE STRONG REQUEST")
     print(f"turn         : {req.turn}")
     print(f"aiOwner      : {req.aiOwner}")
-    print(f"playerLevel  : {req.playerLevel}")
+    print(f"playerLevel  : {raw_level}")
+    print(f"userLevel    : {level_name}")
     print("====================================")
     # print("=== STRONG AI ROUTE: YANEURAOU USI + COMPETITIVE CONTROL ===")
 
@@ -448,6 +465,119 @@ def ai_move_strong(req: AiMoveRequest):
 
         "policyCandidates": shown_candidates,
         "mctsCandidates": shown_candidates,
+    }
+
+@app.post("/api/review-player-move")
+def review_player_move(req: PlayerMoveReviewRequest):
+    shogi = ShogiBoard.from_html_state(req.model_dump())
+    moves = shogi.generate_legal_moves(req.turn)
+
+    legal_ids = set(legal_moves_to_ids(moves))
+
+    if req.playedMoveId not in legal_ids:
+        return {
+            "ok": False,
+            "reason": "合法手ではありません",
+            "playerLevel": round(req.playerLevel, 3),
+            "newPlayerLevel": round(req.playerLevel, 3),
+            "levelDelta": 0.0,
+        }
+
+    player_level = max(0.05, min(1.0, float(req.playerLevel)))
+
+    engine = get_yaneuraou_engine()
+
+    try:
+        candidates = engine.analyze(
+            shogi=shogi,
+            turn=req.turn,
+            depth=6,
+            multipv=8,
+        )
+    except Exception as exc:
+        return {
+            "ok": False,
+            "reason": str(exc),
+            "playerLevel": round(player_level, 3),
+            "newPlayerLevel": round(player_level, 3),
+            "levelDelta": 0.0,
+        }
+
+    if not candidates:
+        return {
+            "ok": False,
+            "reason": "候補手を取得できませんでした",
+            "playerLevel": round(player_level, 3),
+            "newPlayerLevel": round(player_level, 3),
+            "levelDelta": 0.0,
+        }
+
+    candidates = sorted(candidates, key=lambda c: c.score, reverse=True)
+    best_score = int(candidates[0].score)
+
+    chosen = None
+    chosen_rank = None
+
+    for index, item in enumerate(candidates, start=1):
+        if item.move_id == req.playedMoveId:
+            chosen = item
+            chosen_rank = index
+            break
+
+    if chosen is None:
+        score_drop = 9999
+        chosen_score = None
+        level_delta = -0.04
+        quality = "候補外"
+    else:
+        chosen_score = int(chosen.score)
+        score_drop = best_score - chosen_score
+
+        if score_drop <= 80:
+            level_delta = 0.04
+            quality = "最善級"
+        elif score_drop <= 180:
+            level_delta = 0.025
+            quality = "好手"
+        elif score_drop <= 350:
+            level_delta = 0.0
+            quality = "普通"
+        elif score_drop <= 700:
+            level_delta = -0.025
+            quality = "疑問手"
+        else:
+            level_delta = -0.05
+            quality = "悪手"
+
+        if best_score >= 500 and chosen_score < 0:
+            level_delta = min(level_delta, -0.06)
+            quality = "大きな見落とし"
+
+        if chosen_score <= -800:
+            level_delta = min(level_delta, -0.08)
+            quality = "大悪手"
+
+    new_level = max(0.05, min(1.0, player_level + level_delta))
+
+    return {
+        "ok": True,
+        "playerLevel": round(player_level, 3),
+        "newPlayerLevel": round(new_level, 3),
+        "levelDelta": round(level_delta, 3),
+        "quality": quality,
+        "playedMoveId": req.playedMoveId,
+        "chosenRank": chosen_rank,
+        "bestScore": best_score,
+        "chosenScore": chosen_score,
+        "scoreDrop": score_drop,
+        "candidates": [
+            {
+                **yaneuraou_candidate_to_dict(item),
+                "selected": item.move_id == req.playedMoveId,
+                "scoreDropFromBest": int(best_score - int(item.score)),
+            }
+            for item in candidates[:8]
+        ],
     }
 
 @app.post("/api/check-state")
